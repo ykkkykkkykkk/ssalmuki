@@ -603,14 +603,15 @@ app.post("/api/reports", requireAuth, async (req, res) => {
   }
 });
 
+// ─── 프론트엔드 정적 파일 서빙 ──────────────────────────────────
+const frontendPath = path.join(__dirname, "frontend", "dist");
+app.use(express.static(frontendPath));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
 // ─── 서버 시작 ─────────────────────────────────────────────────
-// Vercel serverless 환경에서는 export, 로컬에서는 listen
-if (process.env.VERCEL) {
-  initDB().catch(console.error);
-  module.exports = app;
-} else {
-  const PORT = process.env.PORT || 3000;
-  initDB().then(() => {
-    app.listen(PORT, () => console.log(`쌀먹이 백엔드 실행 중: http://localhost:${PORT}`));
-  });
-}
+const PORT = process.env.PORT || 3000;
+initDB().then(() => {
+  app.listen(PORT, () => console.log(`쌀먹이 실행 중: http://localhost:${PORT}`));
+});
