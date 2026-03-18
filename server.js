@@ -606,7 +606,7 @@ app.post("/api/reports", requireAuth, async (req, res) => {
 // ─── 프론트엔드 정적 파일 서빙 ──────────────────────────────────
 const frontendPath = path.join(__dirname, "frontend", "dist");
 app.use(express.static(frontendPath));
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
