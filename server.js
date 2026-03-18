@@ -610,8 +610,19 @@ app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
+// ─── Keep-alive (무료 플랜 슬립 방지) ─────────────────────────
+function keepAlive() {
+  const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  setInterval(() => {
+    fetch(`${url}/api/stats`).catch(() => {});
+  }, 14 * 60 * 1000); // 14분마다
+}
+
 // ─── 서버 시작 ─────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 initDB().then(() => {
-  app.listen(PORT, () => console.log(`쌀먹이 실행 중: http://localhost:${PORT}`));
+  app.listen(PORT, () => {
+    console.log(`쌀먹이 실행 중: http://localhost:${PORT}`);
+    keepAlive();
+  });
 });
