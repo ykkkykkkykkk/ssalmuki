@@ -1,7 +1,7 @@
 {
   "name": "ssalmuki",
   "scripts": {
-    "build": "cd frontend && npm install && npm run build",
+    "build": "cd frontend && npm install --legacy-peer-deps && npm run build",
     "start": "node server.js"
   },
   "dependencies": {
