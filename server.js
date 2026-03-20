@@ -603,12 +603,286 @@ app.post("/api/reports", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/collect  (수동 수집 트리거)
+ */
+app.post("/api/collect", requireSecret, async (req, res) => {
+  if (!YOUTUBE_API_KEY) return res.status(500).json({ error: "YOUTUBE_API_KEY 없음" });
+  collectAll()
+    .then(() => res.json({ ok: true, message: "수집 완료" }))
+    .catch((e) => res.status(500).json({ error: e.message }));
+});
+
 // ─── 프론트엔드 정적 파일 서빙 ──────────────────────────────────
 const frontendPath = path.join(__dirname, "frontend", "dist");
 app.use(express.static(frontendPath));
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  YouTube 자동 수집기 (내장)
+// ═══════════════════════════════════════════════════════════════
+
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+
+const SEARCH_QUERIES = [
+  "구독자 이벤트 기념 경품",
+  "만 구독자 기념 이벤트",
+  "구독자 이벤트 기프티콘",
+  "구독자 이벤트 상품권 나눔",
+  "구독자 돌파 이벤트 증정",
+  "만명 달성 이벤트",
+  "구독자 감사 이벤트 현금",
+];
+
+const EVENT_TITLE_KEYWORDS = [
+  "이벤트", "나눔", "증정", "경품", "추첨", "기념", "달성", "감사",
+];
+const PRIZE_KEYWORDS = [
+  "기프티콘", "상품권", "현금", "치킨", "스타벅스", "아이패드",
+  "닌텐도", "에어팟", "갤럭시", "아이폰", "올리브영", "GS", "CU",
+  "네이버페이", "카카오페이", "문화상품권",
+];
+const CONDITION_MAP = {
+  "구독": "구독",
+  "좋아요": "좋아요",
+  "댓글": "댓글",
+  "공유": "공유",
+  "알림": "알림설정",
+};
+
+const DATE_PATTERNS = [
+  /(\d{1,2})[./](\d{1,2})[./](\d{2,4})/,
+  /(\d{4})[./](\d{1,2})[./](\d{1,2})/,
+  /(\d{1,2})월\s*(\d{1,2})일/,
+  /~\s*(\d{1,2})[./](\d{1,2})/,
+  /까지.*?(\d{1,2})[./](\d{1,2})/,
+];
+
+async function ytFetch(endpoint, params) {
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
+  Object.entries({ ...params, key: YOUTUBE_API_KEY }).forEach(([k, v]) => url.searchParams.set(k, v));
+  const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) throw new Error(`YouTube API ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+async function ytSearch(query, maxResults = 10) {
+  const publishedAfter = new Date(Date.now() - 30 * 86400000).toISOString();
+  const data = await ytFetch("search", {
+    part: "snippet", q: query, type: "video", order: "date",
+    maxResults, publishedAfter, regionCode: "KR", relevanceLanguage: "ko",
+  });
+  return data.items || [];
+}
+
+async function ytVideoDetail(videoIds) {
+  const data = await ytFetch("videos", {
+    part: "snippet,statistics,contentDetails",
+    id: videoIds.join(","),
+  });
+  return data.items || [];
+}
+
+async function ytChannelDetail(channelId) {
+  const data = await ytFetch("channels", {
+    part: "statistics,snippet", id: channelId,
+  });
+  return data.items?.[0] || null;
+}
+
+function isEventVideo(title, description) {
+  const text = (title + " " + description).toLowerCase();
+  const hasEvent = EVENT_TITLE_KEYWORDS.some((k) => text.includes(k));
+  const hasPrize = PRIZE_KEYWORDS.some((k) => text.includes(k));
+  return hasEvent && hasPrize;
+}
+
+function extractPrize(text) {
+  for (const kw of PRIZE_KEYWORDS) {
+    const idx = text.indexOf(kw);
+    if (idx !== -1) return text.slice(Math.max(0, idx - 10), idx + 20).trim();
+  }
+  return null;
+}
+
+function extractDeadline(text) {
+  const now = new Date();
+  for (const pattern of DATE_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const groups = match.slice(1).map(Number);
+    let dt;
+    try {
+      if (groups.length >= 3) {
+        let [a, b, c] = groups;
+        if (a > 1000) { dt = new Date(a, b - 1, c); }          // 2025/12/31
+        else { if (c < 100) c += 2000; dt = new Date(c, a - 1, b); } // 12/31/2025
+      } else if (groups.length === 2) {
+        dt = new Date(now.getFullYear(), groups[0] - 1, groups[1]);
+        if (dt < now) dt.setFullYear(dt.getFullYear() + 1);
+      }
+      if (dt && dt > now) return dt.toISOString().slice(0, 10);
+    } catch { continue; }
+  }
+  return null;
+}
+
+function extractConditions(text) {
+  const found = [];
+  for (const [kw, label] of Object.entries(CONDITION_MAP)) {
+    if (text.includes(kw)) found.push(label);
+  }
+  return found.length ? found : ["댓글"];
+}
+
+function formatSubCount(n) {
+  if (n >= 10000) return `${Math.floor(n / 10000)}만`;
+  if (n >= 1000) return `${Math.round(n / 1000)}천`;
+  return String(n);
+}
+
+async function processVideo(item) {
+  const snippet = item.snippet || {};
+  const stats = item.statistics || {};
+  const title = snippet.title || "";
+  const description = snippet.description || "";
+
+  if (!isEventVideo(title, description)) return null;
+
+  const text = title + "\n" + description;
+  const channelId = snippet.channelId || "";
+  let subCountRaw = 0;
+  let channelThumb = "";
+  try {
+    const ch = await ytChannelDetail(channelId);
+    if (ch) {
+      subCountRaw = parseInt(ch.statistics?.subscriberCount || "0", 10);
+      channelThumb = ch.snippet?.thumbnails?.default?.url || "";
+    }
+  } catch {}
+
+  return {
+    video_id: item.id,
+    title,
+    channel_name: snippet.channelTitle || "",
+    channel_id: channelId,
+    channel_thumbnail: channelThumb,
+    subscriber_count: formatSubCount(subCountRaw),
+    subscriber_count_raw: subCountRaw,
+    thumbnail_url: snippet.thumbnails?.medium?.url || "",
+    video_url: `https://www.youtube.com/watch?v=${item.id}`,
+    description: description.slice(0, 500),
+    prize: extractPrize(text),
+    conditions: extractConditions(text),
+    deadline: extractDeadline(text),
+    view_count: parseInt(stats.viewCount || "0", 10),
+    like_count: parseInt(stats.likeCount || "0", 10),
+    published_at: snippet.publishedAt || "",
+    collected_at: new Date().toISOString(),
+    status: "live",
+  };
+}
+
+async function saveEvent(event) {
+  const status = computeStatus(event.deadline);
+  const conditions = JSON.stringify(event.conditions || []);
+  await db.execute({
+    sql: `INSERT INTO events
+            (video_id, title, channel_name, channel_id, channel_thumbnail,
+             subscriber_count, subscriber_count_raw, thumbnail_url, video_url,
+             description, prize, conditions, deadline, view_count, like_count,
+             published_at, collected_at, status, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+          ON CONFLICT(video_id) DO UPDATE SET
+            title               = excluded.title,
+            view_count          = excluded.view_count,
+            like_count          = excluded.like_count,
+            status              = excluded.status,
+            prize               = excluded.prize,
+            conditions          = excluded.conditions,
+            deadline            = excluded.deadline,
+            updated_at          = datetime('now')`,
+    args: [
+      event.video_id, event.title, event.channel_name, event.channel_id,
+      event.channel_thumbnail, event.subscriber_count, event.subscriber_count_raw,
+      event.thumbnail_url, event.video_url, event.description, event.prize,
+      conditions, event.deadline, event.view_count, event.like_count,
+      event.published_at, event.collected_at, status,
+    ],
+  });
+}
+
+async function collectAll() {
+  console.log("=== 수집 시작 ===");
+  const seen = new Set();
+  let collected = 0;
+  let skipped = 0;
+
+  for (const query of SEARCH_QUERIES) {
+    try {
+      console.log(`검색: ${query}`);
+      const searchItems = await ytSearch(query, 10);
+      const videoIds = searchItems
+        .filter((i) => i.id?.kind === "youtube#video")
+        .map((i) => i.id.videoId)
+        .filter((vid) => !seen.has(vid));
+      if (!videoIds.length) continue;
+
+      const details = await ytVideoDetail(videoIds);
+      for (const item of details) {
+        const vid = item.id;
+        seen.add(vid);
+        try {
+          const event = await processVideo(item);
+          if (event) {
+            await saveEvent(event);
+            console.log(`  저장: ${event.title.slice(0, 40)}...`);
+            collected++;
+          } else {
+            skipped++;
+          }
+        } catch (e) {
+          console.warn(`  처리 실패 (${vid}):`, e.message);
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 500)); // API 속도 제한 방지
+    } catch (e) {
+      console.error(`검색 실패 (${query}):`, e.message);
+    }
+  }
+
+  // 마감 지난 이벤트 상태 업데이트
+  await db.execute(`
+    UPDATE events SET status = 'ended', updated_at = datetime('now')
+    WHERE deadline IS NOT NULL AND deadline < date('now') AND status != 'ended'
+  `);
+  await db.execute(`
+    UPDATE events SET status = 'soon', updated_at = datetime('now')
+    WHERE deadline IS NOT NULL AND deadline >= date('now') AND deadline <= date('now', '+2 days') AND status = 'live'
+  `);
+
+  console.log(`=== 수집 완료: ${collected}개 저장, ${skipped}개 스킵 ===`);
+}
+
+const COLLECT_INTERVAL = 2 * 60 * 60 * 1000; // 2시간
+
+function startCollector() {
+  if (!YOUTUBE_API_KEY) {
+    console.warn("YOUTUBE_API_KEY 없음 — 수집기 비활성화");
+    return;
+  }
+  console.log("수집기 시작 (2시간 간격)");
+  // 서버 시작 10초 후 첫 수집, 이후 2시간 간격
+  setTimeout(() => {
+    collectAll().catch((e) => console.error("수집 오류:", e.message));
+    setInterval(() => {
+      collectAll().catch((e) => console.error("수집 오류:", e.message));
+    }, COLLECT_INTERVAL);
+  }, 10000);
+}
 
 // ─── Keep-alive (무료 플랜 슬립 방지) ─────────────────────────
 function keepAlive() {
@@ -624,5 +898,6 @@ initDB().then(() => {
   app.listen(PORT, () => {
     console.log(`쌀먹이 실행 중: http://localhost:${PORT}`);
     keepAlive();
+    startCollector();
   });
 });
