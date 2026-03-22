@@ -1,0 +1,13 @@
+{
+  "name": "쌀먹이 - 유튜버 구독자 이벤트",
+  "short_name": "쌀먹이",
+  "description": "유튜버 구독자 이벤트를 자동으로 찾아주는 커뮤니티",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#E84E3B",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
