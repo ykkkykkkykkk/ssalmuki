@@ -46,13 +46,13 @@ export default function App() {
         {/* ─── 헤더 ─── */}
         <header style={{padding:"20px 16px 12px",borderBottom:"0.5px solid #f0f0f0"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div onClick={goHome} style={{cursor:"pointer"}}>
+            <div onClick={goHome} role="button" aria-label="홈으로 이동" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && goHome()} style={{cursor:"pointer"}}>
               <h1 style={{fontSize:"20px",fontWeight:"600",margin:0}}><span style={{color:"#E84E3B"}}>쌀</span>먹이</h1>
               <p style={{fontSize:"12px",color:"#999",marginTop:"2px"}}>유튜버 구독자 이벤트 · 커뮤니티</p>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
               {tab === "home" && !selectedEventId && (
-                <button onClick={reload} style={{fontSize:"12px",color:"#999",padding:"4px 10px",border:"0.5px solid #e0e0e0",borderRadius:"6px",background:"#fff",cursor:"pointer"}}>새로고침</button>
+                <button onClick={reload} aria-label="새로고침" style={{fontSize:"12px",color:"#999",padding:"4px 10px",border:"0.5px solid #e0e0e0",borderRadius:"6px",background:"#fff",cursor:"pointer"}}>새로고침</button>
               )}
               {auth.user ? (
                 <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
@@ -81,7 +81,7 @@ export default function App() {
             <main style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:"8px"}}>
               {loading && <div style={{textAlign:"center",padding:"60px 0",color:"#ccc"}}>불러오는 중...</div>}
               {error && <div style={{textAlign:"center",padding:"60px 0",color:"#aaa"}}>{error}</div>}
-              {!loading&&!error&&events.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:"#ccc"}}>이벤트가 없습니다</div>}
+              {!loading&&!error&&events.length===0&&<div style={{padding:"60px 20px",textAlign:"center"}}><p style={{fontSize:"40px",marginBottom:"8px"}}>📭</p><p style={{color:"#999",fontSize:"14px"}}>이벤트가 없습니다</p></div>}
               {!loading&&events.map((e)=><EventCard key={e.id||e.video_id} event={e} onSelect={setSelectedEventId}/>)}
             </main>
           </>
