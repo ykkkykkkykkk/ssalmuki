@@ -1,22 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useEvents } from "./hooks/useEvents";
 import { useAuth } from "./hooks/useAuth";
 import { useRouter } from "./hooks/useRouter";
 import { useToast } from "./hooks/useToast";
 import EventCard from "./components/EventCard";
 import FilterBar from "./components/FilterBar";
-import EventDetail from "./components/EventDetail";
 import ReportButton from "./components/ReportButton";
-import Community from "./components/Community";
-import PostDetail from "./components/PostDetail";
 import WritePost from "./components/WritePost";
 import AuthModal from "./components/AuthModal";
-import SearchPage from "./components/SearchPage";
 import Toast from "./components/Toast";
-import Profile from "./components/Profile";
-import BookmarkList from "./components/BookmarkList";
 import NotificationBell from "./components/NotificationBell";
 import AdvancedFilter from "./components/AdvancedFilter";
+
+const EventDetail = lazy(() => import("./components/EventDetail"));
+const Community = lazy(() => import("./components/Community"));
+const PostDetail = lazy(() => import("./components/PostDetail"));
+const SearchPage = lazy(() => import("./components/SearchPage"));
+const Profile = lazy(() => import("./components/Profile"));
+const BookmarkList = lazy(() => import("./components/BookmarkList"));
 
 const TABS = [
   { key: "home", label: "이벤트", emoji: "🎁", path: "/" },
@@ -107,11 +108,13 @@ export default function App() {
 
         {/* --- 검색 페이지 --- */}
         {isSearch && (
-          <SearchPage
-            onSelectEvent={(id) => router.push(`/events/${id}`)}
-            onSelectPost={(id) => router.push(`/community/${id}`)}
-            onBack={() => router.back()}
-          />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <SearchPage
+              onSelectEvent={(id) => router.push(`/events/${id}`)}
+              onSelectPost={(id) => router.push(`/community/${id}`)}
+              onBack={() => router.back()}
+            />
+          </Suspense>
         )}
 
         {/* --- 이벤트 탭 --- */}
@@ -131,15 +134,21 @@ export default function App() {
           </>
         )}
         {eventDetailMatch && (
-          <EventDetail eventId={eventDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <EventDetail eventId={eventDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          </Suspense>
         )}
 
         {/* --- 커뮤니티 탭 --- */}
         {tab === "community" && !postDetailMatch && !isWriting && !isSearch && (
-          <Community onSelectPost={(id) => router.push(`/community/${id}`)} onWrite={() => requireLogin(() => router.push("/community/write"))} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <Community onSelectPost={(id) => router.push(`/community/${id}`)} onWrite={() => requireLogin(() => router.push("/community/write"))} />
+          </Suspense>
         )}
         {postDetailMatch && postDetailMatch.id !== "write" && (
-          <PostDetail postId={postDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} onDeleted={() => { router.replace("/community"); showToast("글이 삭제되었습니다"); }} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <PostDetail postId={postDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} onDeleted={() => { router.replace("/community"); showToast("글이 삭제되었습니다"); }} />
+          </Suspense>
         )}
         {isWriting && (
           <WritePost onBack={() => router.back()} onDone={() => { router.replace("/community"); showToast("글이 작성되었습니다"); }} user={auth.user} authHeaders={auth.authHeaders} />
@@ -147,12 +156,16 @@ export default function App() {
 
         {/* --- 프로필 --- */}
         {profileMatch && (
-          <Profile nickname={profileMatch.nickname} onBack={() => router.back()} onSelectPost={(id) => router.push(`/community/${id}`)} currentUser={auth.user} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <Profile nickname={profileMatch.nickname} onBack={() => router.back()} onSelectPost={(id) => router.push(`/community/${id}`)} currentUser={auth.user} />
+          </Suspense>
         )}
 
         {/* --- 북마크 --- */}
         {isBookmarks && (
-          <BookmarkList user={auth.user} authHeaders={auth.authHeaders} onSelectEvent={(id) => router.push(`/events/${id}`)} onBack={() => router.back()} onRequireLogin={() => setShowAuth(true)} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <BookmarkList user={auth.user} authHeaders={auth.authHeaders} onSelectEvent={(id) => router.push(`/events/${id}`)} onBack={() => router.back()} onRequireLogin={() => setShowAuth(true)} />
+          </Suspense>
         )}
       </div>
 

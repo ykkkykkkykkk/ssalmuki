@@ -321,16 +321,6 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
  */
 app.get("/api/events", searchLimiter, async (req, res) => {
   try {
-    // 조회 전 마감 상태 자동 업데이트
-    await db.execute(`
-      UPDATE events SET status = 'ended', updated_at = datetime('now')
-      WHERE deadline IS NOT NULL AND deadline < date('now') AND status != 'ended'
-    `);
-    await db.execute(`
-      UPDATE events SET status = 'soon', updated_at = datetime('now')
-      WHERE deadline IS NOT NULL AND deadline >= date('now') AND deadline <= date('now', '+2 days') AND status = 'live'
-    `);
-
     const { status, tag, page = 1, limit = 20, q, min_subs, max_subs, deadline_from, deadline_to, channel } = req.query;
     if (q?.trim()) {
       if (q.length > 100) return res.status(400).json({ error: "검색어는 100자 이하로 입력해주세요" });
