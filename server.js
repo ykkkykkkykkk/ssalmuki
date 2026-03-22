@@ -158,6 +158,10 @@ async function initDB() {
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pc_post ON post_comments(post_id)`);
 
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_events_subs ON events(subscriber_count_raw)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_posts_nickname ON posts(nickname)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_comments_postid ON post_comments(post_id)`);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS post_likes (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1338,16 +1342,6 @@ async function collectAll() {
     }
   }
 
-  // 마감 지난 이벤트 상태 업데이트
-  await db.execute(`
-    UPDATE events SET status = 'ended', updated_at = datetime('now')
-    WHERE deadline IS NOT NULL AND deadline < date('now') AND status != 'ended'
-  `);
-  await db.execute(`
-    UPDATE events SET status = 'soon', updated_at = datetime('now')
-    WHERE deadline IS NOT NULL AND deadline >= date('now') AND deadline <= date('now', '+2 days') AND status = 'live'
-  `);
-
   console.log(`=== 수집 완료: ${collected}개 저장, ${skipped}개 스킵 ===`);
 }
 
@@ -1367,6 +1361,14 @@ function startCollector() {
     }, COLLECT_INTERVAL);
   }, 10000);
 }
+
+// ─── 마감 상태 자동 업데이트 (5분마다) ─────────────────────────
+setInterval(async () => {
+  try {
+    await db.execute(`UPDATE events SET status = 'ended', updated_at = datetime('now') WHERE deadline IS NOT NULL AND deadline < date('now') AND status != 'ended'`);
+    await db.execute(`UPDATE events SET status = 'soon', updated_at = datetime('now') WHERE deadline IS NOT NULL AND deadline >= date('now') AND deadline <= date('now', '+2 days') AND status = 'live'`);
+  } catch (e) { console.warn("상태 업데이트 실패:", e.message); }
+}, 5 * 60 * 1000);
 
 // ─── Keep-alive (무료 플랜 슬립 방지) ─────────────────────────
 function keepAlive() {

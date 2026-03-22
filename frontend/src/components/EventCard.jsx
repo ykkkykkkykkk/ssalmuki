@@ -1,4 +1,6 @@
-﻿export default function EventCard({ event, onSelect }) {
+﻿import { memo } from "react";
+
+function EventCard({ event, onSelect }) {
   const bc={live:{bg:"#FEF2F2",color:"#B91C1C"},soon:{bg:"#FFFBEB",color:"#92400E"},ended:{bg:"#F3F4F6",color:"#9CA3AF"}};
   const bt={live:"진행중",soon:"마감임박",ended:"종료"};
   const badge=bc[event.status]||bc.live;
@@ -23,3 +25,5 @@
     </div>
   );
 }
+
+export default memo(EventCard);
