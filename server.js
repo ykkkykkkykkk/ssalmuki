@@ -9,13 +9,36 @@ const { createClient } = require("@libsql/client");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "ssalmuk-jwt-secret-2026";
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: process.env.FRONTEND_URL || "*" }));
+
+// ─── CORS 설정 ──────────────────────────────────────────────────
+const FRONTEND_URL = process.env.FRONTEND_URL;
+if (!FRONTEND_URL) {
+  console.warn("⚠ FRONTEND_URL 환경변수가 설정되지 않았습니다. CORS origin을 '*'로 사용합니다.");
+}
+app.use(cors({ origin: FRONTEND_URL || "*" }));
+
+// ─── Rate Limiting ──────────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요" },
+});
+app.use(globalLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { error: "로그인/회원가입 요청이 너무 많습니다. 잠시 후 다시 시도해주세요" },
+});
+
+app.post("/api/ping-test", (req, res) => { res.json({ pong: true }); });
 
 // ─── Turso DB 연결 ──────────────────────────────────────────────
 const db = createClient({
@@ -144,6 +167,32 @@ async function initDB() {
     )
   `);
 
+  // ─── 북마크 테이블 ───
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS bookmarks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nickname TEXT NOT NULL,
+      event_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(nickname, event_id),
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )
+  `);
+
+  // ─── 알림 테이블 ───
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nickname TEXT NOT NULL,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      link TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(nickname, is_read)`);
+
   console.log("DB 초기화 완료");
 }
 
@@ -205,7 +254,7 @@ function dDay(deadline) {
 /**
  * POST /api/auth/signup  { nickname, password }
  */
-app.post("/api/auth/signup", async (req, res) => {
+app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
     const { nickname, password } = req.body;
     if (!nickname?.trim()) return res.status(400).json({ error: "닉네임을 입력해주세요" });
@@ -231,7 +280,7 @@ app.post("/api/auth/signup", async (req, res) => {
 /**
  * POST /api/auth/login  { nickname, password }
  */
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   try {
     const { nickname, password } = req.body;
     if (!nickname?.trim() || !password) return res.status(400).json({ error: "닉네임과 비밀번호를 입력해주세요" });
@@ -262,10 +311,21 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
 /**
  * GET /api/events
  * 쿼리: status(live|soon|ended), tag(gift|cash|sub), page, limit
+ *       q(검색어), min_subs, max_subs, deadline_from, deadline_to, channel
  */
 app.get("/api/events", async (req, res) => {
   try {
-    const { status, tag, page = 1, limit = 20 } = req.query;
+    // 조회 전 마감 상태 자동 업데이트
+    await db.execute(`
+      UPDATE events SET status = 'ended', updated_at = datetime('now')
+      WHERE deadline IS NOT NULL AND deadline < date('now') AND status != 'ended'
+    `);
+    await db.execute(`
+      UPDATE events SET status = 'soon', updated_at = datetime('now')
+      WHERE deadline IS NOT NULL AND deadline >= date('now') AND deadline <= date('now', '+2 days') AND status = 'live'
+    `);
+
+    const { status, tag, page = 1, limit = 20, q, min_subs, max_subs, deadline_from, deadline_to, channel } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let where = "WHERE status != 'ended'";
@@ -285,6 +345,33 @@ app.get("/api/events", async (req, res) => {
                     OR prize LIKE '%닌텐도%' OR prize LIKE '%갤럭시%')`;
     } else if (tag === "sub") {
       where += ` AND conditions LIKE '%구독%'`;
+    }
+
+    // 고급 필터
+    if (q?.trim()) {
+      where += " AND (title LIKE ? OR channel_name LIKE ?)";
+      const keyword = `%${q.trim()}%`;
+      args.push(keyword, keyword);
+    }
+    if (min_subs) {
+      where += " AND subscriber_count_raw >= ?";
+      args.push(Number(min_subs));
+    }
+    if (max_subs) {
+      where += " AND subscriber_count_raw <= ?";
+      args.push(Number(max_subs));
+    }
+    if (deadline_from) {
+      where += " AND deadline >= ?";
+      args.push(deadline_from);
+    }
+    if (deadline_to) {
+      where += " AND deadline <= ?";
+      args.push(deadline_to);
+    }
+    if (channel?.trim()) {
+      where += " AND channel_name = ?";
+      args.push(channel.trim());
     }
 
     const countResult = await db.execute({
@@ -350,6 +437,7 @@ app.post("/api/events/:id/comments", requireAuth, async (req, res) => {
       sql: "INSERT INTO comments (event_id, nickname, content) VALUES (?, ?, ?)",
       args: [req.params.id, req.user.nickname, content.trim()],
     });
+    // 알림: 이벤트에 댓글이 달렸을 때 (자기 자신 제외 — 이벤트는 글 작성자가 없으므로 스킵)
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "서버 오류" });
@@ -471,6 +559,26 @@ app.get("/api/stats", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/refresh  (유저용 수집 트리거 — rate limit 10분에 1회)
+ */
+const refreshLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 1, message: { error: "10분에 1회만 새로고침할 수 있습니다" } });
+let lastRefresh = 0;
+app.post("/api/refresh", refreshLimiter, async (req, res) => {
+  if (!YOUTUBE_API_KEY) return res.status(500).json({ error: "수집기가 비활성화되어 있습니다" });
+  const now = Date.now();
+  if (now - lastRefresh < 10 * 60 * 1000) {
+    return res.json({ ok: true, message: "최근에 수집이 완료되었습니다", cached: true });
+  }
+  lastRefresh = now;
+  try {
+    await collectAll();
+    res.json({ ok: true, message: "수집 완료" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 //  게시판 API
 // ═══════════════════════════════════════════════════════════════
@@ -559,6 +667,16 @@ app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
       sql: "INSERT INTO post_comments (post_id, nickname, content) VALUES (?, ?, ?)",
       args: [req.params.id, req.user.nickname, content.trim()],
     });
+    // 알림: 글 작성자에게 댓글 알림 (자기 자신 제외)
+    try {
+      const postResult = await db.execute({ sql: "SELECT nickname FROM posts WHERE id = ?", args: [req.params.id] });
+      if (postResult.rows.length && postResult.rows[0].nickname !== req.user.nickname) {
+        await db.execute({
+          sql: "INSERT INTO notifications (nickname, type, message, link) VALUES (?, ?, ?, ?)",
+          args: [postResult.rows[0].nickname, "comment_on_post", `${req.user.nickname}님이 회원님의 글에 댓글을 남겼습니다.`, `/posts/${req.params.id}`],
+        });
+      }
+    } catch (notifErr) { console.warn("알림 생성 실패:", notifErr.message); }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "서버 오류" });
@@ -578,9 +696,176 @@ app.post("/api/posts/:id/like", requireAuth, async (req, res) => {
       sql: "UPDATE posts SET likes = likes + 1 WHERE id = ?",
       args: [req.params.id],
     });
+    // 알림: 글 작성자에게 좋아요 알림 (자기 자신 제외)
+    try {
+      const postResult = await db.execute({ sql: "SELECT nickname FROM posts WHERE id = ?", args: [req.params.id] });
+      if (postResult.rows.length && postResult.rows[0].nickname !== req.user.nickname) {
+        await db.execute({
+          sql: "INSERT INTO notifications (nickname, type, message, link) VALUES (?, ?, ?, ?)",
+          args: [postResult.rows[0].nickname, "like_on_post", `${req.user.nickname}님이 회원님의 글에 좋아요를 눌렀습니다.`, `/posts/${req.params.id}`],
+        });
+      }
+    } catch (notifErr) { console.warn("알림 생성 실패:", notifErr.message); }
     res.json({ ok: true });
   } catch (err) {
     if (err.message?.includes("UNIQUE")) return res.status(409).json({ error: "이미 좋아요 했습니다" });
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  검색 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/search?q=keyword
+ */
+app.get("/api/search", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q?.trim()) return res.json({ events: [], posts: [] });
+    const keyword = `%${q.trim()}%`;
+
+    const [evResult, postResult] = await Promise.all([
+      db.execute({
+        sql: `SELECT * FROM events
+              WHERE title LIKE ? OR channel_name LIKE ? OR prize LIKE ? OR description LIKE ?
+              ORDER BY CASE status WHEN 'soon' THEN 0 WHEN 'live' THEN 1 ELSE 2 END, collected_at DESC
+              LIMIT 20`,
+        args: [keyword, keyword, keyword, keyword],
+      }),
+      db.execute({
+        sql: `SELECT p.*, (SELECT COUNT(*) FROM post_comments WHERE post_id = p.id) as comment_count
+              FROM posts p
+              WHERE p.title LIKE ? OR p.content LIKE ? OR p.nickname LIKE ?
+              ORDER BY p.created_at DESC LIMIT 20`,
+        args: [keyword, keyword, keyword],
+      }),
+    ]);
+
+    res.json({
+      events: evResult.rows.map((row) => ({
+        ...row,
+        conditions: JSON.parse(row.conditions || "[]"),
+        dday: dDay(row.deadline),
+      })),
+      posts: postResult.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  글/댓글 수정·삭제 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * PUT /api/posts/:id  (글 수정 — 본인만)
+ */
+app.put("/api/posts/:id", requireAuth, async (req, res) => {
+  try {
+    const { title, content, category } = req.body;
+    const post = await db.execute({ sql: "SELECT * FROM posts WHERE id = ?", args: [req.params.id] });
+    if (!post.rows.length) return res.status(404).json({ error: "글을 찾을 수 없습니다" });
+    if (post.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 글만 수정할 수 있습니다" });
+    if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: "제목과 내용을 입력해주세요" });
+    if (title.length > 100) return res.status(400).json({ error: "제목 100자 이하" });
+    if (content.length > 2000) return res.status(400).json({ error: "내용 2000자 이하" });
+    const validCats = ["humor", "youtube", "free", "winner"];
+    const cat = validCats.includes(category) ? category : post.rows[0].category;
+    await db.execute({
+      sql: "UPDATE posts SET title = ?, content = ?, category = ? WHERE id = ?",
+      args: [title.trim(), content.trim(), cat, req.params.id],
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * DELETE /api/posts/:id  (글 삭제 — 본인만)
+ */
+app.delete("/api/posts/:id", requireAuth, async (req, res) => {
+  try {
+    const post = await db.execute({ sql: "SELECT * FROM posts WHERE id = ?", args: [req.params.id] });
+    if (!post.rows.length) return res.status(404).json({ error: "글을 찾을 수 없습니다" });
+    if (post.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 글만 삭제할 수 있습니다" });
+    await db.execute({ sql: "DELETE FROM post_comments WHERE post_id = ?", args: [req.params.id] });
+    await db.execute({ sql: "DELETE FROM post_likes WHERE post_id = ?", args: [req.params.id] });
+    await db.execute({ sql: "DELETE FROM posts WHERE id = ?", args: [req.params.id] });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * DELETE /api/posts/:postId/comments/:commentId  (댓글 삭제 — 본인만)
+ */
+app.delete("/api/posts/:postId/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const comment = await db.execute({ sql: "SELECT * FROM post_comments WHERE id = ? AND post_id = ?", args: [req.params.commentId, req.params.postId] });
+    if (!comment.rows.length) return res.status(404).json({ error: "댓글을 찾을 수 없습니다" });
+    if (comment.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 댓글만 삭제할 수 있습니다" });
+    await db.execute({ sql: "DELETE FROM post_comments WHERE id = ?", args: [req.params.commentId] });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * PUT /api/posts/:postId/comments/:commentId  (댓글 수정 — 본인만)
+ */
+app.put("/api/posts/:postId/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: "내용을 입력해주세요" });
+    if (content.length > 500) return res.status(400).json({ error: "내용 500자 이하" });
+    const comment = await db.execute({ sql: "SELECT * FROM post_comments WHERE id = ? AND post_id = ?", args: [req.params.commentId, req.params.postId] });
+    if (!comment.rows.length) return res.status(404).json({ error: "댓글을 찾을 수 없습니다" });
+    if (comment.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 댓글만 수정할 수 있습니다" });
+    await db.execute({ sql: "UPDATE post_comments SET content = ? WHERE id = ?", args: [content.trim(), req.params.commentId] });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * DELETE /api/events/:eventId/comments/:commentId  (이벤트 댓글 삭제 — 본인만)
+ */
+app.delete("/api/events/:eventId/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const comment = await db.execute({ sql: "SELECT * FROM comments WHERE id = ? AND event_id = ?", args: [req.params.commentId, req.params.eventId] });
+    if (!comment.rows.length) return res.status(404).json({ error: "댓글을 찾을 수 없습니다" });
+    if (comment.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 댓글만 삭제할 수 있습니다" });
+    await db.execute({ sql: "DELETE FROM comments WHERE id = ?", args: [req.params.commentId] });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * PUT /api/events/:eventId/comments/:commentId  (이벤트 댓글 수정 — 본인만)
+ */
+app.put("/api/events/:eventId/comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: "내용을 입력해주세요" });
+    if (content.length > 500) return res.status(400).json({ error: "내용 500자 이하" });
+    const comment = await db.execute({ sql: "SELECT * FROM comments WHERE id = ? AND event_id = ?", args: [req.params.commentId, req.params.eventId] });
+    if (!comment.rows.length) return res.status(404).json({ error: "댓글을 찾을 수 없습니다" });
+    if (comment.rows[0].nickname !== req.user.nickname) return res.status(403).json({ error: "본인의 댓글만 수정할 수 있습니다" });
+    await db.execute({ sql: "UPDATE comments SET content = ? WHERE id = ?", args: [content.trim(), req.params.commentId] });
+    res.json({ ok: true });
+  } catch (err) {
     res.status(500).json({ error: "서버 오류" });
   }
 });
@@ -604,13 +889,210 @@ app.post("/api/reports", requireAuth, async (req, res) => {
 });
 
 /**
- * POST /api/collect  (수동 수집 트리거)
+ * POST /api/collect  (수동 수집 트리거 — 시크릿 키 필요)
  */
 app.post("/api/collect", requireSecret, async (req, res) => {
   if (!YOUTUBE_API_KEY) return res.status(500).json({ error: "YOUTUBE_API_KEY 없음" });
   collectAll()
     .then(() => res.json({ ok: true, message: "수집 완료" }))
     .catch((e) => res.status(500).json({ error: e.message }));
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  프로필 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/users/:nickname  (유저 프로필: 가입일, 글 수, 댓글 수)
+ */
+app.get("/api/users/:nickname", async (req, res) => {
+  try {
+    const { nickname } = req.params;
+    const userResult = await db.execute({ sql: "SELECT id, nickname, created_at FROM users WHERE nickname = ?", args: [nickname] });
+    if (!userResult.rows.length) return res.status(404).json({ error: "유저를 찾을 수 없습니다" });
+    const user = userResult.rows[0];
+    const [postCount, commentCount] = await Promise.all([
+      db.execute({ sql: "SELECT COUNT(*) as cnt FROM posts WHERE nickname = ?", args: [nickname] }),
+      db.execute({ sql: "SELECT COUNT(*) as cnt FROM post_comments WHERE nickname = ?", args: [nickname] }),
+    ]);
+    res.json({
+      nickname: user.nickname,
+      created_at: user.created_at,
+      post_count: postCount.rows[0].cnt,
+      comment_count: commentCount.rows[0].cnt,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * GET /api/users/:nickname/posts  (유저가 쓴 글 목록)
+ */
+app.get("/api/users/:nickname/posts", async (req, res) => {
+  try {
+    const { nickname } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const countResult = await db.execute({ sql: "SELECT COUNT(*) as cnt FROM posts WHERE nickname = ?", args: [nickname] });
+    const total = countResult.rows[0].cnt;
+    const result = await db.execute({
+      sql: `SELECT p.*, (SELECT COUNT(*) FROM post_comments WHERE post_id = p.id) as comment_count
+            FROM posts p WHERE p.nickname = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
+      args: [nickname, Number(limit), offset],
+    });
+    res.json({ posts: result.rows, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * GET /api/users/:nickname/comments  (유저가 쓴 댓글 목록)
+ */
+app.get("/api/users/:nickname/comments", async (req, res) => {
+  try {
+    const { nickname } = req.params;
+    const result = await db.execute({
+      sql: `SELECT pc.*, p.title as post_title FROM post_comments pc
+            LEFT JOIN posts p ON p.id = pc.post_id
+            WHERE pc.nickname = ? ORDER BY pc.created_at DESC LIMIT 50`,
+      args: [nickname],
+    });
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  북마크 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/bookmarks  { event_id } - 북마크 추가
+ */
+app.post("/api/bookmarks", requireAuth, async (req, res) => {
+  try {
+    const { event_id } = req.body;
+    if (!event_id) return res.status(400).json({ error: "event_id가 필요합니다" });
+    await db.execute({
+      sql: "INSERT INTO bookmarks (nickname, event_id) VALUES (?, ?)",
+      args: [req.user.nickname, event_id],
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.message?.includes("UNIQUE")) return res.status(409).json({ error: "이미 북마크한 이벤트입니다" });
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * DELETE /api/bookmarks/:eventId  - 북마크 제거
+ */
+app.delete("/api/bookmarks/:eventId", requireAuth, async (req, res) => {
+  try {
+    await db.execute({
+      sql: "DELETE FROM bookmarks WHERE nickname = ? AND event_id = ?",
+      args: [req.user.nickname, req.params.eventId],
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * GET /api/bookmarks  - 내 북마크 목록
+ */
+app.get("/api/bookmarks", requireAuth, async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT e.*, b.created_at as bookmarked_at FROM bookmarks b
+            JOIN events e ON e.id = b.event_id
+            WHERE b.nickname = ? ORDER BY b.created_at DESC`,
+      args: [req.user.nickname],
+    });
+    const events = result.rows.map((row) => ({
+      ...row,
+      conditions: JSON.parse(row.conditions || "[]"),
+      dday: dDay(row.deadline),
+    }));
+    res.json(events);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * GET /api/events/:id/bookmark-status  - 북마크 여부
+ */
+app.get("/api/events/:id/bookmark-status", optionalAuth, async (req, res) => {
+  try {
+    if (!req.user) return res.json({ bookmarked: false });
+    const result = await db.execute({
+      sql: "SELECT id FROM bookmarks WHERE nickname = ? AND event_id = ?",
+      args: [req.user.nickname, req.params.id],
+    });
+    res.json({ bookmarked: result.rows.length > 0 });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  알림 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/notifications  - 내 알림 목록 (최근 50개)
+ */
+app.get("/api/notifications", requireAuth, async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM notifications WHERE nickname = ? ORDER BY created_at DESC LIMIT 50",
+      args: [req.user.nickname],
+    });
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * GET /api/notifications/unread-count  - 읽지 않은 알림 수
+ */
+app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: "SELECT COUNT(*) as cnt FROM notifications WHERE nickname = ? AND is_read = 0",
+      args: [req.user.nickname],
+    });
+    res.json({ count: result.rows[0].cnt });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
+});
+
+/**
+ * PUT /api/notifications/read-all  - 모두 읽음 처리
+ */
+app.put("/api/notifications/read-all", requireAuth, async (req, res) => {
+  try {
+    await db.execute({
+      sql: "UPDATE notifications SET is_read = 1 WHERE nickname = ? AND is_read = 0",
+      args: [req.user.nickname],
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "서버 오류" });
+  }
 });
 
 // ─── 프론트엔드 정적 파일 서빙 ──────────────────────────────────
@@ -900,4 +1382,7 @@ initDB().then(() => {
     keepAlive();
     startCollector();
   });
+}).catch((err) => {
+  console.error("DB 초기화 실패:", err);
+  process.exit(1);
 });
