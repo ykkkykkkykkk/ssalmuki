@@ -9,13 +9,16 @@ const { createClient } = require("@libsql/client");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "ssalmuk-jwt-secret-2026";
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { console.error("FATAL: JWT_SECRET 환경변수가 설정되지 않았습니다."); process.exit(1); })() : require("crypto").randomBytes(32).toString("hex"));
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: process.env.FRONTEND_URL || "*" }));
+
+const searchLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: "검색 요청이 너무 많습니다. 잠시 후 다시 시도해주세요" } });
 
 // ─── Turso DB 연결 ──────────────────────────────────────────────
 const db = createClient({
@@ -209,7 +212,7 @@ app.post("/api/auth/signup", async (req, res) => {
   try {
     const { nickname, password } = req.body;
     if (!nickname?.trim()) return res.status(400).json({ error: "닉네임을 입력해주세요" });
-    if (!password || password.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 합니다" });
+    if (!password || password.length < 8) return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다" });
     if (nickname.length > 20) return res.status(400).json({ error: "닉네임은 20자 이하" });
     if (!/^[가-힣a-zA-Z0-9_]+$/.test(nickname.trim())) {
       return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자, _ 만 가능합니다" });
@@ -263,9 +266,12 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
  * GET /api/events
  * 쿼리: status(live|soon|ended), tag(gift|cash|sub), page, limit
  */
-app.get("/api/events", async (req, res) => {
+app.get("/api/events", searchLimiter, async (req, res) => {
   try {
-    const { status, tag, page = 1, limit = 20 } = req.query;
+    const { status, tag, page = 1, limit = 20, q } = req.query;
+    if (q?.trim()) {
+      if (q.length > 100) return res.status(400).json({ error: "검색어는 100자 이하로 입력해주세요" });
+    }
     const offset = (Number(page) - 1) * Number(limit);
 
     let where = "WHERE status != 'ended'";
@@ -454,7 +460,7 @@ app.post("/api/events", requireSecret, async (req, res) => {
 /**
  * GET /api/stats  (대시보드용)
  */
-app.get("/api/stats", async (req, res) => {
+app.get("/api/stats", searchLimiter, async (req, res) => {
   try {
     const result = await db.execute(`
       SELECT
@@ -489,7 +495,8 @@ app.get("/api/posts", async (req, res) => {
       where += " AND category = ?";
       args.push(category);
     }
-    const order = sort === "popular" ? "likes DESC, created_at DESC" : "created_at DESC";
+    const SORT_OPTIONS = { popular: "likes DESC, created_at DESC", recent: "created_at DESC" };
+    const order = SORT_OPTIONS[sort] || "created_at DESC";
     const countResult = await db.execute({ sql: `SELECT COUNT(*) as cnt FROM posts ${where}`, args });
     const total = countResult.rows[0].cnt;
     const result = await db.execute({
@@ -570,17 +577,13 @@ app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
  */
 app.post("/api/posts/:id/like", requireAuth, async (req, res) => {
   try {
-    await db.execute({
-      sql: "INSERT INTO post_likes (post_id, nickname) VALUES (?, ?)",
-      args: [req.params.id, req.user.nickname],
-    });
-    await db.execute({
-      sql: "UPDATE posts SET likes = likes + 1 WHERE id = ?",
-      args: [req.params.id],
-    });
+    const existing = await db.execute({ sql: "SELECT id FROM post_likes WHERE post_id = ? AND nickname = ?", args: [req.params.id, req.user.nickname] });
+    if (existing.rows.length) return res.status(409).json({ error: "이미 좋아요한 게시글입니다" });
+    await db.execute({ sql: "INSERT INTO post_likes (post_id, nickname) VALUES (?, ?)", args: [req.params.id, req.user.nickname] });
+    await db.execute({ sql: "UPDATE posts SET likes = likes + 1 WHERE id = ?", args: [req.params.id] });
     res.json({ ok: true });
   } catch (err) {
-    if (err.message?.includes("UNIQUE")) return res.status(409).json({ error: "이미 좋아요 했습니다" });
+    if (err.message?.includes("UNIQUE")) return res.status(409).json({ error: "이미 좋아요한 게시글입니다" });
     res.status(500).json({ error: "서버 오류" });
   }
 });
