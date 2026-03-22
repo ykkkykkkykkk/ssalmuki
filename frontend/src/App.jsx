@@ -67,11 +67,11 @@ export default function App() {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:"#f9fafb"}}>
-      <div style={{maxWidth:"560px",margin:"0 auto",background:"#fff",minHeight:"100vh",paddingBottom: showTabBar ? "56px" : "0"}}>
+    <div style={{minHeight:"100vh",background:"var(--color-bg, #f9fafb)"}}>
+      <div style={{maxWidth:"560px",margin:"0 auto",background:"var(--color-card, #fff)",minHeight:"100vh",paddingBottom: showTabBar ? "56px" : "0"}}>
 
         {/* --- 헤더 --- */}
-        <header style={{padding:"20px 16px 12px",borderBottom:"0.5px solid #f0f0f0"}}>
+        <header style={{padding:"20px 16px 12px",borderBottom:"0.5px solid var(--color-border, #e5e7eb)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div onClick={goHome} role="button" aria-label="홈으로 이동" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && goHome()} style={{cursor:"pointer"}}>
               <h1 style={{fontSize:"20px",fontWeight:"600",margin:0}}><span style={{color:"#E84E3B"}}>쌀</span>먹이</h1>
@@ -158,10 +158,10 @@ export default function App() {
 
       {/* --- 하단 탭바 --- */}
       {showTabBar && (
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"0.5px solid #e0e0e0", display:"flex", justifyContent:"center", zIndex:200 }}>
+        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"var(--color-card, #fff)", borderTop:"0.5px solid var(--color-border, #e0e0e0)", display:"flex", justifyContent:"center", zIndex:200 }}>
           <div style={{ display:"flex", maxWidth:"560px", width:"100%" }}>
             {TABS.map((t) => (
-              <button key={t.key} onClick={() => switchTab(t.key)}
+              <button key={t.key} aria-current={tab === t.key ? "page" : undefined} onClick={() => switchTab(t.key)}
                 style={{ flex:1, padding:"8px 0 6px", background:"none", border:"none", cursor:"pointer",
                   display:"flex", flexDirection:"column", alignItems:"center", gap:"2px",
                   color: tab === t.key ? "#E84E3B" : "#bbb" }}>

@@ -40,6 +40,18 @@
           --color-text-muted: #777777;
         }
       }
+      /* 포커스 인디케이터 */
+      button:focus-visible, a:focus-visible, [role="button"]:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+        outline: 2px solid var(--color-blue);
+        outline-offset: 2px;
+      }
+      /* 최소 터치 타겟 */
+      button, [role="button"] {
+        min-height: 36px;
+      }
+      /* 스크롤바 */
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
     </style>
   </head>
   <body>

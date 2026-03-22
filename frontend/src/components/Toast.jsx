@@ -18,6 +18,8 @@ export default function Toast({ message, type = "info", onClose }) {
 
   return (
     <div
+      role="alert"
+      aria-live="polite"
       style={{
         position: "fixed",
         top: visible ? "20px" : "-80px",
