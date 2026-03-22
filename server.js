@@ -20,7 +20,21 @@ app.use(helmet({
   contentSecurityPolicy: false, // React SPA에서 인라인 스크립트 허용
   crossOriginEmbedderPolicy: false,
 }));
-app.use(express.json());
+// ─── DDoS 방어: 요청 속도 제한 ──────────────────────────────
+const slowDown = require("express-slow-down");
+const speedLimiter = slowDown({
+  windowMs: 60 * 1000,
+  delayAfter: 50,
+  delayMs: (hits) => (hits - 50) * 200,
+});
+app.use(speedLimiter);
+app.use(express.json({ limit: "10kb" }));
+const crypto = require("crypto");
+app.use((req, res, next) => {
+  req.id = crypto.randomBytes(8).toString("hex");
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
 
 // ─── CORS 설정 ──────────────────────────────────────────────────
 const FRONTEND_URL = process.env.FRONTEND_URL;
@@ -33,15 +47,19 @@ app.use(cors({ origin: FRONTEND_URL || "*", credentials: true }));
 // ─── Rate Limiting ──────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요" },
 });
 app.use(globalLimiter);
 
 const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
+  windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { error: "로그인/회원가입 요청이 너무 많습니다. 잠시 후 다시 시도해주세요" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "로그인 시도가 너무 많습니다. 15분 후 다시 시도해주세요" },
 });
 
 app.post("/api/ping-test", (req, res) => { res.json({ pong: true }); });
@@ -277,6 +295,9 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     const { nickname, password } = req.body;
     if (!nickname?.trim()) return res.status(400).json({ error: "닉네임을 입력해주세요" });
     if (!password || password.length < 8) return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다" });
+    if (!/[A-Za-z]/.test(password)) return res.status(400).json({ error: "비밀번호에 영문자를 포함해주세요" });
+    if (!/[0-9]/.test(password)) return res.status(400).json({ error: "비밀번호에 숫자를 포함해주세요" });
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return res.status(400).json({ error: "비밀번호에 특수문자를 포함해주세요" });
     if (nickname.length > 20) return res.status(400).json({ error: "닉네임은 20자 이하" });
     if (!/^[가-힣a-zA-Z0-9_]+$/.test(nickname.trim())) {
       return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자, _ 만 가능합니다" });
