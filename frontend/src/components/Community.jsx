@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { PostSkeleton } from "./Skeleton";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 const CATS = [
@@ -33,13 +34,13 @@ export default function Community({ onSelectPost, onWrite }) {
       setPosts(data.posts);
       setTotal(data.total);
       setTotalPages(data.totalPages);
-    } catch {}
+    } catch { /* ignore */ }
     setLoading(false);
   }, [category, sort, page]);
 
   useEffect(() => { load(); }, [load]);
 
-  const timeAgo = (dateStr) => {
+  const timeAgo = useCallback((dateStr) => {
     const diff = Date.now() - new Date(dateStr + "Z").getTime();
     const m = Math.floor(diff / 60000);
     if (m < 1) return "방금";
@@ -49,7 +50,7 @@ export default function Community({ onSelectPost, onWrite }) {
     const d = Math.floor(h / 24);
     if (d < 7) return `${d}일 전`;
     return new Date(dateStr).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
-  };
+  }, []);
 
   return (
     <div>
@@ -81,7 +82,7 @@ export default function Community({ onSelectPost, onWrite }) {
 
       {/* 글 목록 */}
       <main style={{ padding: "0 16px 80px" }}>
-        {loading && <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>불러오는 중...</div>}
+        {loading && <div style={{ padding: "0 0 20px" }}>{[0,1,2].map(i => <PostSkeleton key={i} />)}</div>}
         {!loading && posts.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>아직 글이 없습니다</div>}
         {!loading && posts.map((p) => (
           <div key={p.id} onClick={() => onSelectPost(p.id)}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import BookmarkButton from "./BookmarkButton";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 
@@ -9,6 +10,9 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // 댓글 수정
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editCommentContent, setEditCommentContent] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -21,7 +25,7 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
       setEvent(ev);
       setComments(cm);
       setWinners(wn);
-    } catch {}
+    } catch { /* ignore */ }
     setLoading(false);
   }, [eventId]);
 
@@ -42,7 +46,7 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
         const cm = await fetch(`${BASE}/api/events/${eventId}/comments`).then((r) => r.json());
         setComments(cm);
       } else { const err = await r.json(); alert(err.error); }
-    } catch {}
+    } catch { /* ignore */ }
     setSubmitting(false);
   };
 
@@ -59,7 +63,45 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
         const wn = await fetch(`${BASE}/api/events/${eventId}/winners`).then((r) => r.json());
         setWinners(wn);
       } else { alert(data.error); }
-    } catch {}
+    } catch { /* ignore */ }
+  };
+
+  // --- 댓글 삭제 ---
+  const deleteComment = async (commentId) => {
+    if (!confirm("댓글을 삭제하시겠습니까?")) return;
+    try {
+      const r = await fetch(`${BASE}/api/events/${eventId}/comments/${commentId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (r.ok) {
+        const cm = await fetch(`${BASE}/api/events/${eventId}/comments`).then((r) => r.json());
+        setComments(cm);
+      } else { const err = await r.json(); alert(err.error); }
+    } catch { alert("삭제 실패"); }
+  };
+
+  // --- 댓글 수정 ---
+  const startEditComment = (c) => {
+    setEditingCommentId(c.id);
+    setEditCommentContent(c.content);
+  };
+  const cancelEditComment = () => { setEditingCommentId(null); setEditCommentContent(""); };
+  const submitEditComment = async (commentId) => {
+    if (!editCommentContent.trim()) return;
+    try {
+      const r = await fetch(`${BASE}/api/events/${eventId}/comments/${commentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ content: editCommentContent }),
+      });
+      if (r.ok) {
+        setEditingCommentId(null);
+        setEditCommentContent("");
+        const cm = await fetch(`${BASE}/api/events/${eventId}/comments`).then((r) => r.json());
+        setComments(cm);
+      } else { const err = await r.json(); alert(err.error); }
+    } catch { alert("수정 실패"); }
   };
 
   const bc = { live: { bg: "#FEF2F2", color: "#B91C1C" }, soon: { bg: "#FFFBEB", color: "#92400E" }, ended: { bg: "#F3F4F6", color: "#9CA3AF" } };
@@ -77,7 +119,7 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
 
       <a href={event.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", borderRadius: "12px", overflow: "hidden", marginBottom: "16px", background: "#f3f4f6" }}>
         {event.thumbnail_url ? (
-          <img src={event.thumbnail_url} alt="" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
+          <img src={event.thumbnail_url} alt={event.title} loading="lazy" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", aspectRatio: "16/9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "48px" }}>🎁</div>
         )}
@@ -100,11 +142,16 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
         {event.dday && <span style={{ fontSize: "12px", fontWeight: "500", marginLeft: "auto", color: event.status === "soon" ? "#D97706" : "#aaa" }}>{event.dday}</span>}
       </div>
 
-      <a href={event.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "10px", background: "#FF0000", color: "#fff", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: "500", marginBottom: "20px" }}>
+      <a href={event.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "10px", background: "#FF0000", color: "#fff", borderRadius: "8px", textDecoration: "none", fontSize: "13px", fontWeight: "500", marginBottom: "12px" }}>
         YouTube에서 참여하기 ▶
       </a>
 
-      {/* ─── 당첨 인증 ─── */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
+        <BookmarkButton eventId={eventId} user={user} authHeaders={authHeaders} onRequireLogin={onRequireLogin} />
+        <span style={{ fontSize: "13px", color: "#888" }}>북마크</span>
+      </div>
+
+      {/* --- 당첨 인증 --- */}
       <div style={{ borderTop: "0.5px solid #f0f0f0", paddingTop: "16px", marginBottom: "20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
           <span style={{ fontSize: "14px", fontWeight: "600" }}>🎉 당첨 인증</span>
@@ -122,7 +169,7 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
         )}
       </div>
 
-      {/* ─── 댓글/후기 ─── */}
+      {/* --- 댓글/후기 --- */}
       <div style={{ borderTop: "0.5px solid #f0f0f0", paddingTop: "16px" }}>
         <span style={{ fontSize: "14px", fontWeight: "600", marginBottom: "12px", display: "block" }}>💬 참여 후기 ({comments.length})</span>
 
@@ -141,11 +188,30 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
           {comments.length === 0 && <div style={{ fontSize: "13px", color: "#ccc", textAlign: "center", padding: "20px 0" }}>아직 후기가 없습니다. 첫 후기를 남겨보세요!</div>}
           {comments.map((c) => (
             <div key={c.id} style={{ padding: "10px 12px", background: "#f9fafb", borderRadius: "8px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", alignItems: "center" }}>
                 <span style={{ fontSize: "12px", fontWeight: "600", color: "#333" }}>{c.nickname}</span>
-                <span style={{ fontSize: "11px", color: "#ccc" }}>{new Date(c.created_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "11px", color: "#ccc" }}>{new Date(c.created_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  {user && user.nickname === c.nickname && editingCommentId !== c.id && (
+                    <>
+                      <button onClick={() => startEditComment(c)} style={{ fontSize: "10px", color: "#aaa", background: "none", border: "none", cursor: "pointer", padding: "0" }}>수정</button>
+                      <button onClick={() => deleteComment(c.id)} style={{ fontSize: "10px", color: "#E84E3B", background: "none", border: "none", cursor: "pointer", padding: "0" }}>삭제</button>
+                    </>
+                  )}
+                </div>
               </div>
-              <p style={{ fontSize: "13px", color: "#555", margin: 0, lineHeight: "1.5", wordBreak: "break-word" }}>{c.content}</p>
+              {editingCommentId === c.id ? (
+                <div style={{ marginTop: "6px" }}>
+                  <textarea value={editCommentContent} onChange={(e) => setEditCommentContent(e.target.value)} maxLength={500} rows={2}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #e0e0e0", borderRadius: "6px", fontSize: "13px", resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", marginTop: "6px" }}>
+                    <button onClick={cancelEditComment} style={{ fontSize: "11px", color: "#888", background: "none", border: "1px solid #e0e0e0", borderRadius: "4px", padding: "3px 10px", cursor: "pointer" }}>취소</button>
+                    <button onClick={() => submitEditComment(c.id)} style={{ fontSize: "11px", color: "#fff", background: "#111", border: "none", borderRadius: "4px", padding: "3px 10px", cursor: "pointer" }}>수정</button>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ fontSize: "13px", color: "#555", margin: 0, lineHeight: "1.5", wordBreak: "break-word" }}>{c.content}</p>
+              )}
             </div>
           ))}
         </div>

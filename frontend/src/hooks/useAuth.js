@@ -7,8 +7,6 @@ export function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const token = () => localStorage.getItem(TOKEN_KEY);
-
   const authHeaders = useCallback(() => {
     const t = localStorage.getItem(TOKEN_KEY);
     return t ? { Authorization: `Bearer ${t}` } : {};
@@ -16,13 +14,23 @@ export function useAuth() {
 
   // 앱 시작 시 토큰 검증
   useEffect(() => {
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (!t) { setLoading(false); return; }
-    fetch(`${BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${t}` } })
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((u) => setUser(u))
-      .catch(() => { localStorage.removeItem(TOKEN_KEY); })
-      .finally(() => setLoading(false));
+    const verifyToken = async () => {
+      const t = localStorage.getItem(TOKEN_KEY);
+      if (!t) { setLoading(false); return; }
+      try {
+        const r = await fetch(`${BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${t}` } });
+        if (r.ok) {
+          const u = await r.json();
+          setUser(u);
+        } else {
+          localStorage.removeItem(TOKEN_KEY);
+        }
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+      setLoading(false);
+    };
+    verifyToken();
   }, []);
 
   const signup = async (nickname, password) => {
