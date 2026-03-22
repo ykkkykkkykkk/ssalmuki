@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useEvents } from "./hooks/useEvents";
 import { useAuth } from "./hooks/useAuth";
 import EventCard from "./components/EventCard";
 import FilterBar from "./components/FilterBar";
-import EventDetail from "./components/EventDetail";
 import ReportButton from "./components/ReportButton";
-import Community from "./components/Community";
-import PostDetail from "./components/PostDetail";
 import WritePost from "./components/WritePost";
 import AuthModal from "./components/AuthModal";
+
+const EventDetail = lazy(() => import("./components/EventDetail"));
+const Community = lazy(() => import("./components/Community"));
+const PostDetail = lazy(() => import("./components/PostDetail"));
 
 const TABS = [
   { key: "home", label: "이벤트", emoji: "🎁" },
@@ -87,15 +88,21 @@ export default function App() {
           </>
         )}
         {tab === "home" && selectedEventId && (
-          <EventDetail eventId={selectedEventId} onBack={() => setSelectedEventId(null)} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <EventDetail eventId={selectedEventId} onBack={() => setSelectedEventId(null)} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          </Suspense>
         )}
 
         {/* ─── 커뮤니티 탭 ─── */}
         {tab === "community" && !selectedPostId && !writing && (
-          <Community onSelectPost={setSelectedPostId} onWrite={() => requireLogin(() => setWriting(true))} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <Community onSelectPost={setSelectedPostId} onWrite={() => requireLogin(() => setWriting(true))} />
+          </Suspense>
         )}
         {tab === "community" && selectedPostId && (
-          <PostDetail postId={selectedPostId} onBack={() => setSelectedPostId(null)} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+            <PostDetail postId={selectedPostId} onBack={() => setSelectedPostId(null)} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
+          </Suspense>
         )}
         {tab === "community" && writing && (
           <WritePost onBack={() => setWriting(false)} onDone={() => setWriting(false)} user={auth.user} authHeaders={auth.authHeaders} />
