@@ -7,7 +7,7 @@ function EventCard({ event, onSelect }) {
   return (
     <div onClick={()=>onSelect?.(event.id)} role="button" tabIndex={0} aria-label={event.title} onKeyDown={(e) => { if (e.key === 'Enter') onSelect?.(event.id); }} style={{display:"flex",gap:"12px",padding:"14px",background:"#fff",border:"0.5px solid #f0f0f0",borderRadius:"12px",textDecoration:"none",cursor:"pointer",color:"inherit"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#d0d0d0"} onMouseLeave={e=>e.currentTarget.style.borderColor="#f0f0f0"}>
       <div style={{position:"relative",flexShrink:0,width:"96px",height:"64px",borderRadius:"8px",overflow:"hidden",background:"#f3f4f6"}}>
-        {event.thumbnail_url?<img src={event.thumbnail_url} alt={event.title} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"24px"}}>🎁</div>}
+        {event.thumbnail_url?<img src={event.thumbnail_url} alt={event.title} width="96" height="64" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"24px"}}>🎁</div>}
         {event.subscriber_count&&<span style={{position:"absolute",bottom:"3px",right:"4px",fontSize:"9px",fontWeight:"500",background:"rgba(0,0,0,0.6)",color:"#fff",padding:"1px 5px",borderRadius:"3px"}}>{event.subscriber_count}</span>}
       </div>
       <div style={{flex:1,minWidth:0}}>
