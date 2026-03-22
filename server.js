@@ -10,19 +10,25 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { console.error("FATAL: JWT_SECRET 환경변수가 설정되지 않았습니다."); process.exit(1); })() : require("crypto").randomBytes(32).toString("hex"));
 
 const app = express();
+app.use(helmet({
+  contentSecurityPolicy: false, // React SPA에서 인라인 스크립트 허용
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(express.json());
 
 // ─── CORS 설정 ──────────────────────────────────────────────────
 const FRONTEND_URL = process.env.FRONTEND_URL;
-if (!FRONTEND_URL) {
-  console.warn("⚠ FRONTEND_URL 환경변수가 설정되지 않았습니다. CORS origin을 '*'로 사용합니다.");
+if (process.env.NODE_ENV === "production" && !FRONTEND_URL) {
+  console.error("FATAL: FRONTEND_URL 환경변수가 설정되지 않았습니다.");
+  process.exit(1);
 }
-app.use(cors({ origin: FRONTEND_URL || "*" }));
+app.use(cors({ origin: FRONTEND_URL || "*", credentials: true }));
 
 // ─── Rate Limiting ──────────────────────────────────────────────
 const globalLimiter = rateLimit({
@@ -41,6 +47,12 @@ const authLimiter = rateLimit({
 app.post("/api/ping-test", (req, res) => { res.json({ pong: true }); });
 
 const searchLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: "검색 요청이 너무 많습니다. 잠시 후 다시 시도해주세요" } });
+
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요" },
+});
 
 // ─── Turso DB 연결 ──────────────────────────────────────────────
 const db = createClient({
@@ -269,7 +281,7 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     if (!/^[가-힣a-zA-Z0-9_]+$/.test(nickname.trim())) {
       return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자, _ 만 가능합니다" });
     }
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 12);
     const result = await db.execute({
       sql: "INSERT INTO users (nickname, password) VALUES (?, ?)",
       args: [nickname.trim(), hash],
@@ -437,7 +449,7 @@ app.get("/api/events/:id/comments", async (req, res) => {
 /**
  * POST /api/events/:id/comments
  */
-app.post("/api/events/:id/comments", requireAuth, async (req, res) => {
+app.post("/api/events/:id/comments", writeLimiter, requireAuth, async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "내용을 입력해주세요" });
@@ -668,7 +680,7 @@ app.post("/api/posts", optionalAuth, async (req, res) => {
 /**
  * POST /api/posts/:id/comments
  */
-app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
+app.post("/api/posts/:id/comments", writeLimiter, requireAuth, async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "내용을 입력해주세요" });
@@ -696,7 +708,7 @@ app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
 /**
  * POST /api/posts/:id/like
  */
-app.post("/api/posts/:id/like", requireAuth, async (req, res) => {
+app.post("/api/posts/:id/like", writeLimiter, requireAuth, async (req, res) => {
   try {
     const existing = await db.execute({ sql: "SELECT id FROM post_likes WHERE post_id = ? AND nickname = ?", args: [req.params.id, req.user.nickname] });
     if (existing.rows.length) return res.status(409).json({ error: "이미 좋아요한 게시글입니다" });
@@ -879,7 +891,7 @@ app.put("/api/events/:eventId/comments/:commentId", requireAuth, async (req, res
 /**
  * POST /api/reports
  */
-app.post("/api/reports", requireAuth, async (req, res) => {
+app.post("/api/reports", writeLimiter, requireAuth, async (req, res) => {
   try {
     const { video_url, description } = req.body;
     if (!video_url?.trim()) return res.status(400).json({ error: "영상 URL을 입력해주세요" });
@@ -982,7 +994,7 @@ app.get("/api/users/:nickname/comments", async (req, res) => {
 /**
  * POST /api/bookmarks  { event_id } - 북마크 추가
  */
-app.post("/api/bookmarks", requireAuth, async (req, res) => {
+app.post("/api/bookmarks", writeLimiter, requireAuth, async (req, res) => {
   try {
     const { event_id } = req.body;
     if (!event_id) return res.status(400).json({ error: "event_id가 필요합니다" });
