@@ -82,7 +82,7 @@ export default function SearchPage({ onSelectEvent, onSelectPost, onBack }) {
             <div>
               {results.posts.map((p) => (
                 <div key={p.id} onClick={() => onSelectPost(p.id)}
-                  style={{ padding: "14px 0", borderBottom: "0.5px solid #f5f5f5", cursor: "pointer" }}
+                  style={{ padding: "14px 0", borderBottom: "0.5px solid #f5f5f5", cursor: "pointer", transition: "background 0.15s ease" }}
                   onMouseEnter={(e) => e.currentTarget.style.background = "#fafafa"}
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>

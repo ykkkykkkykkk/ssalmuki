@@ -86,7 +86,7 @@ export default function Community({ onSelectPost, onWrite }) {
         {!loading && posts.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>아직 글이 없습니다</div>}
         {!loading && posts.map((p) => (
           <div key={p.id} onClick={() => onSelectPost(p.id)}
-            style={{ padding: "14px 0", borderBottom: "0.5px solid #f5f5f5", cursor: "pointer" }}
+            style={{ padding: "14px 0", borderBottom: "0.5px solid #f5f5f5", cursor: "pointer", transition: "background 0.15s ease" }}
             onMouseEnter={(e) => e.currentTarget.style.background = "#fafafa"}
             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
@@ -116,7 +116,7 @@ export default function Community({ onSelectPost, onWrite }) {
       </main>
 
       {/* 글쓰기 FAB */}
-      <button onClick={onWrite}
+      <button onClick={onWrite} aria-label="글쓰기"
         style={{ position: "fixed", bottom: "80px", right: "max(24px, calc((100vw - 560px) / 2 + 16px))",
           width: "48px", height: "48px", borderRadius: "50%", background: "#111", color: "#fff",
           border: "none", fontSize: "20px", cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.2)",

@@ -63,6 +63,7 @@ export default function NotificationBell({ user, authHeaders, onNavigate }) {
     <div ref={ref} style={{ position: "relative" }}>
       <button
         onClick={handleToggle}
+        aria-label="알림"
         style={{
           background: "none",
           border: "none",
@@ -113,11 +114,12 @@ export default function NotificationBell({ user, authHeaders, onNavigate }) {
             borderRadius: "12px",
             boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
             zIndex: 500,
+            animation: "fadeIn 0.15s ease",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
             <span style={{ fontSize: "14px", fontWeight: "600" }}>알림</span>
-            <button onClick={markAllRead} style={{ background: "none", border: "none", fontSize: "12px", color: "#3B82F6", cursor: "pointer", padding: 0 }}>
+            <button onClick={markAllRead} aria-label="모든 알림 읽음 처리" style={{ background: "none", border: "none", fontSize: "12px", color: "#3B82F6", cursor: "pointer", padding: 0 }}>
               모두 읽음
             </button>
           </div>
@@ -136,6 +138,7 @@ export default function NotificationBell({ user, authHeaders, onNavigate }) {
                   borderBottom: "1px solid #f5f5f5",
                   cursor: n.link ? "pointer" : "default",
                   background: n.read ? "#fff" : "#F0F9FF",
+                  transition: "background 0.15s ease",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = n.read ? "#fff" : "#F0F9FF")}
@@ -151,6 +154,7 @@ export default function NotificationBell({ user, authHeaders, onNavigate }) {
           )}
         </div>
       )}
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </div>
   );
 }

@@ -136,7 +136,7 @@ export default function PostDetail({ postId, onBack, user, authHeaders, onRequir
   };
 
   if (loading) return <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>불러오는 중...</div>;
-  if (!post) return <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>글을 찾을 수 없습니다</div>;
+  if (!post) return <div style={{padding:"60px 20px",textAlign:"center"}}><p style={{fontSize:"40px",marginBottom:"8px"}}>🔍</p><p style={{color:"#999",fontSize:"14px"}}>글을 찾을 수 없습니다</p></div>;
 
   return (
     <div style={{ padding: "16px" }}>

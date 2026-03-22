@@ -74,7 +74,7 @@ export default function Profile({ nickname, onBack, onSelectPost, currentUser })
             <div
               key={post.id}
               onClick={() => onSelectPost?.(post.id)}
-              style={{ padding: "12px 0", borderBottom: "1px solid #f5f5f5", cursor: "pointer" }}
+              style={{ padding: "12px 0", borderBottom: "1px solid #f5f5f5", cursor: "pointer", transition: "background 0.15s ease" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >

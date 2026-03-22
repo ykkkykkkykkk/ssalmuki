@@ -108,7 +108,7 @@ export default function EventDetail({ eventId, onBack, user, authHeaders, onRequ
   const bt = { live: "진행중", soon: "마감임박", ended: "종료" };
 
   if (loading) return <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>불러오는 중...</div>;
-  if (!event) return <div style={{ textAlign: "center", padding: "60px 0", color: "#ccc" }}>이벤트를 찾을 수 없습니다</div>;
+  if (!event) return <div style={{padding:"60px 20px",textAlign:"center"}}><p style={{fontSize:"40px",marginBottom:"8px"}}>🔍</p><p style={{color:"#999",fontSize:"14px"}}>이벤트를 찾을 수 없습니다</p></div>;
 
   const badge = bc[event.status] || bc.live;
   const conditions = Array.isArray(event.conditions) ? event.conditions : JSON.parse(event.conditions || "[]");
