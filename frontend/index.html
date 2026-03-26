@@ -50,6 +50,99 @@
       button, [role="button"] { min-height: 36px; }
       ::-webkit-scrollbar { width: 4px; }
       ::-webkit-scrollbar-thumb { background: #c4b89a; border-radius: 2px; }
+
+      /* ═══ 반응형 레이아웃 ═══ */
+      .paper-wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        min-height: 100vh;
+      }
+      .paper-header-title { font-size: 36px; }
+      .paper-header-sub { letter-spacing: 4px; }
+
+      /* 메인 + 사이드바 */
+      .paper-body {
+        display: flex;
+        flex-direction: column;
+        padding: 24px 20px;
+      }
+      .paper-main { flex: 1; min-width: 0; }
+      .paper-sidebar {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid var(--color-border-light);
+      }
+
+      /* 사이드 이벤트 그리드 */
+      .side-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      /* 나머지 이벤트 그리드 */
+      .rest-grid {
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* 헤드라인 제목 */
+      .headline-title { font-size: 22px; }
+      /* 헤드라인 썸네일 */
+      .headline-thumb { aspect-ratio: 16/9; }
+
+      /* 하단 탭바 */
+      .tab-bar-wrap { max-width: 720px; }
+
+      /* ── 태블릿 (768px 이상) ── */
+      @media (min-width: 768px) {
+        .paper-wrap { max-width: 960px; }
+        .paper-header-title { font-size: 44px; }
+        .paper-header-sub { letter-spacing: 6px; }
+        .side-grid { grid-template-columns: repeat(2, 1fr); }
+        .headline-title { font-size: 28px; }
+        .tab-bar-wrap { max-width: 960px; }
+      }
+
+      /* ── 데스크탑 (1024px 이상) ── */
+      @media (min-width: 1024px) {
+        .paper-wrap { max-width: 1200px; }
+        .paper-header-title { font-size: 52px; letter-spacing: -2px; }
+        .paper-header-sub { letter-spacing: 8px; font-size: 12px; }
+
+        .paper-body {
+          flex-direction: row;
+          gap: 32px;
+          padding: 28px 32px;
+        }
+        .paper-main { flex: 3; }
+        .paper-sidebar {
+          flex: 1;
+          margin-top: 0;
+          padding-top: 0;
+          border-top: none;
+          border-left: 1px solid var(--color-border-light);
+          padding-left: 32px;
+          position: sticky;
+          top: 20px;
+          align-self: flex-start;
+        }
+
+        .side-grid { grid-template-columns: repeat(3, 1fr); }
+        .headline-title { font-size: 32px; }
+        .headline-thumb { aspect-ratio: 2/1; }
+        .tab-bar-wrap { max-width: 1200px; }
+
+        /* 데스크탑에서 나머지 이벤트 2열 */
+        .rest-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 0 24px;
+        }
+        .rest-grid > article {
+          border-bottom: 1px solid var(--color-border-light);
+        }
+      }
     </style>
   </head>
   <body>
