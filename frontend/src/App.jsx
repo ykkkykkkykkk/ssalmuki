@@ -118,7 +118,7 @@ export default function App() {
           {/* 신문 제목 */}
           <div onClick={goHome} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && goHome()} style={{ cursor: "pointer", padding: "8px 0 12px" }}>
             <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "36px", fontWeight: "900", letterSpacing: "-1px", margin: 0, color: "var(--color-text)" }}>
-              쌀먹줍줍
+              쌀먹일보
             </h1>
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-muted)", marginTop: "4px", letterSpacing: "4px" }}>
               YOUTUBE EVENT COMMUNITY
@@ -384,7 +384,7 @@ export default function App() {
         {/* ═══ 하단 푸터 ═══ */}
         {tab === "home" && !isSubPage && !loading && events.length > 0 && (
           <footer style={{ padding: "20px", borderTop: "3px double var(--color-border)", textAlign: "center", marginTop: "20px" }}>
-            <p style={{ fontFamily: "var(--font-serif)", fontSize: "14px", fontWeight: "700", color: "var(--color-text-muted)" }}>쌀먹줍줍</p>
+            <p style={{ fontFamily: "var(--font-serif)", fontSize: "14px", fontWeight: "700", color: "var(--color-text-muted)" }}>쌀먹일보</p>
             <p style={{ fontSize: "10px", color: "var(--color-text-muted)", marginTop: "4px" }}>유튜버 구독자 이벤트 커뮤니티</p>
           </footer>
         )}
