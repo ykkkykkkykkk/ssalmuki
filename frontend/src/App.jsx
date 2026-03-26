@@ -94,9 +94,12 @@ export default function App() {
 
         {/* ═══ 신문 헤더 ═══ */}
         <header style={{ padding: "16px 20px 0", textAlign: "center", borderBottom: "3px double var(--color-border)" }}>
-          {/* 상단 날짜 + 유틸 */}
+          {/* 상단 날짜 + 이벤트 수 + 유틸 */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--color-text-muted)", marginBottom: "8px", fontFamily: "var(--font-sans)" }}>
-            <span>{todayStr}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span>{todayStr}</span>
+              {stats && <span style={{ color: "var(--color-primary)", fontWeight: "600" }}>수집 {total}건</span>}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               {!isSearch && (
                 <button onClick={() => router.push("/search")} aria-label="검색" style={{ fontSize: "13px", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)" }}>
@@ -184,7 +187,7 @@ export default function App() {
             )}
 
             {!loading && !error && events.length > 0 && (
-              <div style={{ padding: "20px" }}>
+              <div style={{ padding: "24px 20px" }}>
 
                 {/* ── 헤드라인 이벤트 (크게) ── */}
                 {headlineEvent && (
@@ -192,7 +195,7 @@ export default function App() {
                     onClick={() => router.push(`/events/${headlineEvent.id}`)}
                     role="button" tabIndex={0}
                     onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${headlineEvent.id}`)}
-                    style={{ cursor: "pointer", marginBottom: "20px", paddingBottom: "20px", borderBottom: "2px solid var(--color-border)" }}>
+                    style={{ cursor: "pointer", marginBottom: "24px", paddingBottom: "24px", borderBottom: "2px solid var(--color-border)" }}>
                     {/* 상태 뱃지 */}
                     <div style={{ marginBottom: "8px" }}>
                       <span style={{
@@ -238,7 +241,7 @@ export default function App() {
 
                 {/* ── 사이드 이벤트 3개 (그리드) ── */}
                 {sideEvents.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "24px", paddingBottom: "20px", borderBottom: "1px solid var(--color-border-light)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "28px", paddingBottom: "24px", borderBottom: "1px solid var(--color-border-light)" }}>
                     {sideEvents.map((ev) => (
                       <article key={ev.id} onClick={() => router.push(`/events/${ev.id}`)} role="button" tabIndex={0}
                         onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${ev.id}`)}
@@ -269,7 +272,7 @@ export default function App() {
                   <section style={{ marginBottom: "24px", paddingBottom: "20px", borderBottom: "1px solid var(--color-border-light)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
                       <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "16px", fontWeight: "700", margin: 0 }}>
-                        COMMUNITY HOT
+                        커뮤니티 인기글
                       </h2>
                       <button onClick={() => router.push("/community")} style={{ fontSize: "11px", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer" }}>
                         더보기 &rsaquo;
@@ -278,7 +281,7 @@ export default function App() {
                     <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
                       {popularPosts.slice(0, 5).map((p, i) => (
                         <div key={p.id} onClick={() => router.push(`/community/${p.id}`)}
-                          style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 0", borderBottom: i < 4 ? "1px solid var(--color-border-light)" : "none", cursor: "pointer" }}>
+                          style={{ display: "flex", alignItems: "center", gap: "14px", padding: "12px 0", borderBottom: i < 4 ? "1px solid var(--color-border-light)" : "none", cursor: "pointer" }}>
                           <span style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: "900", color: i < 3 ? "var(--color-primary)" : "var(--color-border)", width: "28px", textAlign: "center", flexShrink: 0 }}>
                             {i + 1}
                           </span>
@@ -301,15 +304,15 @@ export default function App() {
                 {/* ── 나머지 이벤트 (리스트) ── */}
                 {restEvents.length > 0 && (
                   <section>
-                    <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "16px", fontWeight: "700", marginBottom: "12px", paddingBottom: "8px", borderBottom: "2px solid var(--color-text)" }}>
-                      MORE EVENTS
+                    <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "16px", fontWeight: "700", marginBottom: "14px", paddingBottom: "10px", borderBottom: "2px solid var(--color-text)" }}>
+                      더 많은 이벤트
                     </h2>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
                       {restEvents.map((ev, i) => (
                         <article key={ev.id} onClick={() => router.push(`/events/${ev.id}`)} role="button" tabIndex={0}
                           onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${ev.id}`)}
                           style={{
-                            display: "flex", gap: "14px", padding: "14px 0", cursor: "pointer",
+                            display: "flex", gap: "16px", padding: "16px 0", cursor: "pointer",
                             borderBottom: i < restEvents.length - 1 ? "1px solid var(--color-border-light)" : "none",
                           }}>
                           {ev.thumbnail_url && (
