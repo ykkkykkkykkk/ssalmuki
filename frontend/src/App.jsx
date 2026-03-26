@@ -22,7 +22,7 @@ const BookmarkList = lazy(() => import("./components/BookmarkList"));
 const TABS = [
   { key: "home", label: "이벤트", emoji: "🎁", path: "/" },
   { key: "community", label: "커뮤니티", emoji: "💬", path: "/community" },
-  { key: "bookmarks", label: "저장", emoji: "⭐", path: "/bookmarks" },
+  { key: "bookmarks", label: "로그인", emoji: "⭐", path: "/bookmarks" },
 ];
 
 export default function App() {
