@@ -1,48 +1,55 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="유튜버 구독자 이벤트를 자동으로 찾아주는 커뮤니티. 기프티콘, 현금, 상품권 이벤트를 놓치지 마세요!">
     <meta name="theme-color" content="#E84E3B">
-    <meta property="og:title" content="쌀먹이 - 유튜버 구독자 이벤트 커뮤니티">
+    <meta property="og:title" content="쌀먹줍줍 - 유튜버 구독자 이벤트 커뮤니티">
     <meta property="og:description" content="유튜버 구독자 이벤트를 자동으로 찾아주는 커뮤니티">
     <meta property="og:type" content="website">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="/manifest.json">
-    <title>쌀먹이 - 유튜버 구독자 이벤트 커뮤니티</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <title>쌀먹줍줍 - 유튜버 구독자 이벤트 커뮤니티</title>
     <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       :root {
-        --color-primary: #E84E3B;
-        --color-primary-dark: #D43D2B;
-        --color-blue: #3B82F6;
-        --color-bg: #f9fafb;
+        --color-primary: #C8102E;
+        --color-primary-dark: #A00D24;
+        --color-blue: #1a3a5c;
+        --color-bg: #faf8f3;
         --color-card: #ffffff;
-        --color-border: #e5e7eb;
-        --color-text: #111111;
-        --color-text-secondary: #666666;
-        --color-text-muted: #999999;
-        --radius-sm: 8px;
-        --radius-md: 12px;
-        --radius-lg: 16px;
-        --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-        --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+        --color-border: #d4c9b0;
+        --color-border-light: #e8e0d0;
+        --color-text: #1a1a1a;
+        --color-text-secondary: #555555;
+        --color-text-muted: #8a8070;
+        --color-accent: #8B0000;
+        --font-serif: 'Noto Serif KR', Georgia, 'Times New Roman', serif;
+        --font-sans: 'Noto Sans KR', -apple-system, sans-serif;
+        --radius-sm: 2px;
+        --radius-md: 4px;
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+        --shadow-md: 0 2px 8px rgba(0,0,0,0.1);
       }
-      /* 항상 라이트모드 */
-      /* 포커스 인디케이터 */
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-bg);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+      }
       button:focus-visible, a:focus-visible, [role="button"]:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
         outline: 2px solid var(--color-blue);
         outline-offset: 2px;
       }
-      /* 최소 터치 타겟 */
-      button, [role="button"] {
-        min-height: 36px;
-      }
-      /* 스크롤바 */
+      button, [role="button"] { min-height: 36px; }
       ::-webkit-scrollbar { width: 4px; }
-      ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+      ::-webkit-scrollbar-thumb { background: #c4b89a; border-radius: 2px; }
     </style>
   </head>
   <body>

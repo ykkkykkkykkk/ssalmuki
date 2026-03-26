@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useEvents } from "./hooks/useEvents";
 import { useAuth } from "./hooks/useAuth";
 import { useRouter } from "./hooks/useRouter";
@@ -19,10 +19,12 @@ const SearchPage = lazy(() => import("./components/SearchPage"));
 const Profile = lazy(() => import("./components/Profile"));
 const BookmarkList = lazy(() => import("./components/BookmarkList"));
 
+const BASE = import.meta.env.VITE_API_URL || "";
+
 const TABS = [
-  { key: "home", label: "이벤트", emoji: "🎁", path: "/" },
-  { key: "community", label: "커뮤니티", emoji: "💬", path: "/community" },
-  { key: "bookmarks", label: "로그인", emoji: "⭐", path: "/bookmarks" },
+  { key: "home", label: "TODAY", emoji: "", path: "/" },
+  { key: "community", label: "COMMUNITY", emoji: "", path: "/community" },
+  { key: "bookmarks", label: "MY", emoji: "", path: "/bookmarks" },
 ];
 
 export default function App() {
@@ -32,8 +34,8 @@ export default function App() {
   const { toast, showToast, hideToast } = useToast();
   const [showAuth, setShowAuth] = useState(false);
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [popularPosts, setPopularPosts] = useState([]);
 
-  // 라우트 파싱
   const eventDetailMatch = router.match("/events/:id");
   const postDetailMatch = router.match("/community/:id");
   const isWriting = router.path === "/community/write";
@@ -41,15 +43,9 @@ export default function App() {
   const profileMatch = router.match("/profile/:nickname");
   const isBookmarks = router.path === "/bookmarks";
   const isCommunity = router.path === "/community" || router.path.startsWith("/community");
-  const _isHome = router.path === "/" || router.path.startsWith("/events");
-
-  // 현재 탭
   const tab = isBookmarks ? "bookmarks" : isCommunity ? "community" : "home";
-
-  // 서브페이지 여부
   const isSubPage = !!eventDetailMatch || !!postDetailMatch || isWriting || isSearch || !!profileMatch;
-
-  const lastUpdated = stats?.last_updated ? new Date(stats.last_updated).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : null;
+  const showTabBar = !isSubPage;
 
   const goHome = () => router.push("/");
   const switchTab = (t) => {
@@ -60,93 +56,310 @@ export default function App() {
 
   useEffect(() => { window.scrollTo(0, 0); }, [router.path]);
 
-  const showTabBar = !isSubPage;
+  // 커뮤니티 인기글 가져오기
+  useEffect(() => {
+    fetch(`${BASE}/api/posts?limit=5&sort=popular`)
+      .then(r => r.json())
+      .then(data => setPopularPosts(data.posts || []))
+      .catch(() => {});
+  }, []);
 
   const requireLogin = (callback) => {
     if (auth.user) { callback(); return; }
     setShowAuth(true);
   };
 
-  return (
-    <div style={{minHeight:"100vh",background:"var(--color-bg, #f9fafb)"}}>
-      <div style={{maxWidth:"560px",margin:"0 auto",background:"var(--color-card, #fff)",minHeight:"100vh",paddingBottom: showTabBar ? "56px" : "0"}}>
+  const todayStr = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
 
-        {/* --- 헤더 --- */}
-        <header style={{padding:"20px 16px 12px",borderBottom:"0.5px solid var(--color-border, #e5e7eb)"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div onClick={goHome} role="button" aria-label="홈으로 이동" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && goHome()} style={{cursor:"pointer"}}>
-              <h1 style={{fontSize:"20px",fontWeight:"600",margin:0}}><span style={{color:"#E84E3B"}}>쌀</span>먹이</h1>
-              <p style={{fontSize:"12px",color:"#999",marginTop:"2px"}}>유튜버 구독자 이벤트 · 커뮤니티</p>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-              {/* 검색 버튼 */}
+  // 헤드라인 이벤트 (첫 번째) + 사이드 이벤트 (2~4번째)
+  const headlineEvent = events[0] || null;
+  const sideEvents = events.slice(1, 4);
+  const restEvents = events.slice(4);
+
+  const timeAgo = useCallback((dateStr) => {
+    const diff = Date.now() - new Date(dateStr + "Z").getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "방금";
+    if (m < 60) return `${m}분 전`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}시간 전`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}일 전`;
+    return new Date(dateStr).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
+  }, []);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
+      <div style={{ maxWidth: "720px", margin: "0 auto", background: "var(--color-bg)", minHeight: "100vh", paddingBottom: showTabBar ? "52px" : "0" }}>
+
+        {/* ═══ 신문 헤더 ═══ */}
+        <header style={{ padding: "16px 20px 0", textAlign: "center", borderBottom: "3px double var(--color-border)" }}>
+          {/* 상단 날짜 + 유틸 */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--color-text-muted)", marginBottom: "8px", fontFamily: "var(--font-sans)" }}>
+            <span>{todayStr}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               {!isSearch && (
-                <button onClick={() => router.push("/search")} aria-label="검색" style={{fontSize:"16px",padding:"4px 8px",border:"0.5px solid #e0e0e0",borderRadius:"6px",background:"#fff",cursor:"pointer",lineHeight:1}}>🔍</button>
-              )}
-              {tab === "home" && !eventDetailMatch && !isSearch && (
-                <button onClick={reload} aria-label="새로고침" disabled={refreshing} style={{fontSize:"12px",color: refreshing ? "#ccc" : "#999",padding:"4px 10px",border:"0.5px solid #e0e0e0",borderRadius:"6px",background:"#fff",cursor: refreshing ? "default" : "pointer"}}>{refreshing ? "수집중..." : "새로고침"}</button>
+                <button onClick={() => router.push("/search")} aria-label="검색" style={{ fontSize: "13px", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)" }}>
+                  검색
+                </button>
               )}
               {auth.user ? (
-                <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <NotificationBell user={auth.user} authHeaders={auth.authHeaders} onNavigate={(link) => router.push(link)} />
-                  <span onClick={() => router.push(`/profile/${auth.user.nickname}`)} style={{fontSize:"12px",fontWeight:"500",color:"#333",cursor:"pointer"}}>{auth.user.nickname}</span>
-                  <button onClick={auth.logout} style={{fontSize:"11px",color:"#aaa",background:"none",border:"none",cursor:"pointer",padding:"0"}}>로그아웃</button>
+                  <span onClick={() => router.push(`/profile/${auth.user.nickname}`)} style={{ cursor: "pointer", fontWeight: "500", color: "var(--color-text-secondary)" }}>{auth.user.nickname}</span>
+                  <button onClick={auth.logout} style={{ fontSize: "11px", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer" }}>로그아웃</button>
                 </div>
               ) : (
-                <button onClick={() => setShowAuth(true)} style={{fontSize:"12px",color:"#fff",padding:"5px 12px",border:"none",borderRadius:"6px",background:"#E84E3B",cursor:"pointer",fontWeight:"500"}}>로그인</button>
+                <button onClick={() => setShowAuth(true)} style={{ fontSize: "11px", color: "var(--color-primary)", background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}>로그인</button>
               )}
             </div>
           </div>
-          {tab === "home" && !eventDetailMatch && !isSearch && stats && (
-            <div style={{display:"flex",gap:"16px",marginTop:"10px"}}>
-              <div style={{fontSize:"12px"}}><span style={{color:"#E84E3B",fontWeight:"500"}}>{stats.live_count??0}</span><span style={{color:"#999",marginLeft:"4px"}}>진행중</span></div>
-              <div style={{fontSize:"12px"}}><span style={{color:"#D97706",fontWeight:"500"}}>{stats.soon_count??0}</span><span style={{color:"#999",marginLeft:"4px"}}>마감임박</span></div>
-              {lastUpdated&&<div style={{fontSize:"11px",color:"#ccc",marginLeft:"auto"}}>{lastUpdated} 업데이트</div>}
-            </div>
-          )}
+
+          {/* 신문 제목 */}
+          <div onClick={goHome} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && goHome()} style={{ cursor: "pointer", padding: "8px 0 12px" }}>
+            <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "36px", fontWeight: "900", letterSpacing: "-1px", margin: 0, color: "var(--color-text)" }}>
+              쌀먹줍줍
+            </h1>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-muted)", marginTop: "4px", letterSpacing: "4px" }}>
+              YOUTUBE EVENT COMMUNITY
+            </p>
+          </div>
+
+          {/* 탭 네비게이션 (신문 섹션) */}
+          <div style={{ display: "flex", justifyContent: "center", gap: "0", borderTop: "1px solid var(--color-border-light)" }}>
+            {TABS.map((t, i) => (
+              <button key={t.key} onClick={() => switchTab(t.key)}
+                style={{
+                  flex: 1, padding: "10px 0", background: "none", border: "none", cursor: "pointer",
+                  fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: tab === t.key ? "700" : "400",
+                  letterSpacing: "2px", color: tab === t.key ? "var(--color-primary)" : "var(--color-text-muted)",
+                  borderBottom: tab === t.key ? "2px solid var(--color-primary)" : "2px solid transparent",
+                  borderRight: i < TABS.length - 1 ? "1px solid var(--color-border-light)" : "none",
+                }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </header>
 
-        {/* --- 검색 페이지 --- */}
+        {/* ═══ 검색 페이지 ═══ */}
         {isSearch && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
-            <SearchPage
-              onSelectEvent={(id) => router.push(`/events/${id}`)}
-              onSelectPost={(id) => router.push(`/community/${id}`)}
-              onBack={() => router.back()}
-            />
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
+            <SearchPage onSelectEvent={(id) => router.push(`/events/${id}`)} onSelectPost={(id) => router.push(`/community/${id}`)} onBack={() => router.back()} />
           </Suspense>
         )}
 
-        {/* --- 이벤트 탭 --- */}
+        {/* ═══ 이벤트 탭 (신문 레이아웃) ═══ */}
         {tab === "home" && !eventDetailMatch && !isSearch && (
           <>
-            <div style={{display:"flex",alignItems:"center"}}>
-              <div style={{flex:1}}><FilterBar filter={filter} onFilter={updateFilter} /></div>
-              <button onClick={() => setShowAdvancedFilter(true)} style={{fontSize:"12px",color:"#555",padding:"5px 10px",border:"0.5px solid #e0e0e0",borderRadius:"6px",background:"#fff",cursor:"pointer",marginRight:"16px",whiteSpace:"nowrap",flexShrink:0}}>상세</button>
+            {/* 필터 + 통계 바 */}
+            <div style={{ display: "flex", alignItems: "center", padding: "10px 20px", borderBottom: "1px solid var(--color-border-light)", background: "rgba(255,255,255,0.5)" }}>
+              <div style={{ display: "flex", gap: "8px", flex: 1, overflowX: "auto" }}>
+                <FilterBar filter={filter} onFilter={updateFilter} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                <button onClick={() => setShowAdvancedFilter(true)} style={{ fontSize: "11px", color: "var(--color-text-muted)", padding: "4px 8px", border: "1px solid var(--color-border)", borderRadius: "2px", background: "transparent", cursor: "pointer" }}>상세</button>
+                <button onClick={reload} disabled={refreshing} style={{ fontSize: "11px", color: refreshing ? "#ccc" : "var(--color-text-muted)", padding: "4px 8px", border: "1px solid var(--color-border)", borderRadius: "2px", background: "transparent", cursor: refreshing ? "default" : "pointer" }}>
+                  {refreshing ? "수집중..." : "새로고침"}
+                </button>
+              </div>
             </div>
-            <div style={{padding:"6px 16px",fontSize:"12px",color:"#aaa"}}>이벤트 <span style={{fontWeight:"500",color:"#555"}}>{total}</span>개</div>
-            <main style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:"8px"}}>
-              {loading && <div style={{textAlign:"center",padding:"60px 0",color:"#ccc"}}>불러오는 중...</div>}
-              {error && <div style={{textAlign:"center",padding:"60px 0",color:"#aaa"}}>{error}</div>}
-              {!loading&&!error&&events.length===0&&<div style={{padding:"60px 20px",textAlign:"center"}}><p style={{fontSize:"40px",marginBottom:"8px"}}>📭</p><p style={{color:"#999",fontSize:"14px"}}>이벤트가 없습니다</p></div>}
-              {!loading&&events.map((e)=><EventCard key={e.id||e.video_id} event={e} onSelect={(id) => router.push(`/events/${id}`)}/>)}
-            </main>
+
+            {/* 통계 */}
+            {stats && (
+              <div style={{ display: "flex", gap: "16px", padding: "8px 20px", fontSize: "11px", borderBottom: "1px solid var(--color-border-light)" }}>
+                <span><strong style={{ color: "var(--color-primary)" }}>{stats.live_count ?? 0}</strong> 진행중</span>
+                <span><strong style={{ color: "#B45309" }}>{stats.soon_count ?? 0}</strong> 마감임박</span>
+                <span style={{ marginLeft: "auto", color: "var(--color-text-muted)" }}>총 {total}건</span>
+              </div>
+            )}
+
+            {loading && <div style={{ textAlign: "center", padding: "60px 0", color: "var(--color-text-muted)", fontFamily: "var(--font-serif)" }}>기사를 불러오는 중...</div>}
+            {error && <div style={{ textAlign: "center", padding: "60px 0", color: "var(--color-text-muted)" }}>{error}</div>}
+
+            {!loading && !error && events.length === 0 && (
+              <div style={{ padding: "60px 20px", textAlign: "center" }}>
+                <p style={{ fontFamily: "var(--font-serif)", fontSize: "18px", color: "var(--color-text-muted)" }}>등록된 이벤트가 없습니다</p>
+              </div>
+            )}
+
+            {!loading && !error && events.length > 0 && (
+              <div style={{ padding: "20px" }}>
+
+                {/* ── 헤드라인 이벤트 (크게) ── */}
+                {headlineEvent && (
+                  <article
+                    onClick={() => router.push(`/events/${headlineEvent.id}`)}
+                    role="button" tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${headlineEvent.id}`)}
+                    style={{ cursor: "pointer", marginBottom: "20px", paddingBottom: "20px", borderBottom: "2px solid var(--color-border)" }}>
+                    {/* 상태 뱃지 */}
+                    <div style={{ marginBottom: "8px" }}>
+                      <span style={{
+                        fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: "700", letterSpacing: "1px",
+                        color: headlineEvent.status === "live" ? "var(--color-primary)" : headlineEvent.status === "soon" ? "#B45309" : "#999",
+                        textTransform: "uppercase",
+                      }}>
+                        {headlineEvent.status === "live" ? "BREAKING" : headlineEvent.status === "soon" ? "DEADLINE" : "CLOSED"}
+                      </span>
+                      {headlineEvent.dday && (
+                        <span style={{ fontSize: "11px", fontWeight: "600", marginLeft: "8px", color: headlineEvent.status === "soon" ? "#B45309" : "var(--color-text-muted)" }}>{headlineEvent.dday}</span>
+                      )}
+                    </div>
+                    {/* 헤드라인 제목 */}
+                    <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", fontWeight: "900", lineHeight: "1.3", margin: "0 0 12px", color: "var(--color-text)" }}>
+                      {headlineEvent.title}
+                    </h2>
+                    {/* 썸네일 */}
+                    {headlineEvent.thumbnail_url && (
+                      <div style={{ width: "100%", aspectRatio: "16/9", borderRadius: "2px", overflow: "hidden", marginBottom: "12px", background: "#e8e0d0" }}>
+                        <img src={headlineEvent.thumbnail_url} alt={headlineEvent.title} loading="eager" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                    )}
+                    {/* 메타 정보 */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "12px", color: "var(--color-text-muted)", fontFamily: "var(--font-sans)" }}>
+                      <span style={{ fontWeight: "600", color: "var(--color-text-secondary)" }}>{headlineEvent.channel_name}</span>
+                      {headlineEvent.subscriber_count && <span>{headlineEvent.subscriber_count}</span>}
+                      {headlineEvent.view_count > 0 && <span>조회 {(headlineEvent.view_count / 10000).toFixed(1)}만</span>}
+                    </div>
+                    {/* 경품 + 조건 */}
+                    <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {headlineEvent.prize && (
+                        <span style={{ fontSize: "12px", fontFamily: "var(--font-sans)", fontWeight: "600", color: "var(--color-accent)", background: "#fef2f2", padding: "3px 10px", borderRadius: "2px" }}>
+                          {headlineEvent.prize}
+                        </span>
+                      )}
+                      {Array.isArray(headlineEvent.conditions) && headlineEvent.conditions.map((c, i) => (
+                        <span key={i} style={{ fontSize: "11px", color: "var(--color-text-muted)", padding: "2px 8px", border: "1px solid var(--color-border-light)", borderRadius: "2px" }}>{c}</span>
+                      ))}
+                    </div>
+                  </article>
+                )}
+
+                {/* ── 사이드 이벤트 3개 (그리드) ── */}
+                {sideEvents.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "24px", paddingBottom: "20px", borderBottom: "1px solid var(--color-border-light)" }}>
+                    {sideEvents.map((ev) => (
+                      <article key={ev.id} onClick={() => router.push(`/events/${ev.id}`)} role="button" tabIndex={0}
+                        onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${ev.id}`)}
+                        style={{ cursor: "pointer" }}>
+                        {ev.thumbnail_url && (
+                          <div style={{ width: "100%", aspectRatio: "16/9", borderRadius: "2px", overflow: "hidden", marginBottom: "8px", background: "#e8e0d0" }}>
+                            <img src={ev.thumbnail_url} alt={ev.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </div>
+                        )}
+                        <span style={{
+                          fontSize: "9px", fontWeight: "700", letterSpacing: "0.5px",
+                          color: ev.status === "live" ? "var(--color-primary)" : ev.status === "soon" ? "#B45309" : "#999",
+                        }}>
+                          {ev.status === "live" ? "LIVE" : ev.status === "soon" ? "D-DAY" : "END"}
+                        </span>
+                        <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "13px", fontWeight: "700", lineHeight: "1.3", margin: "4px 0", color: "var(--color-text)" }}>
+                          {ev.title.length > 30 ? ev.title.slice(0, 30) + "..." : ev.title}
+                        </h3>
+                        <p style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>{ev.channel_name}</p>
+                        {ev.prize && <p style={{ fontSize: "10px", color: "var(--color-accent)", fontWeight: "600", marginTop: "4px" }}>{ev.prize.length > 15 ? ev.prize.slice(0, 15) + "..." : ev.prize}</p>}
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── 커뮤니티 인기글 섹션 ── */}
+                {popularPosts.length > 0 && (
+                  <section style={{ marginBottom: "24px", paddingBottom: "20px", borderBottom: "1px solid var(--color-border-light)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                      <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "16px", fontWeight: "700", margin: 0 }}>
+                        COMMUNITY HOT
+                      </h2>
+                      <button onClick={() => router.push("/community")} style={{ fontSize: "11px", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+                        더보기 &rsaquo;
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+                      {popularPosts.slice(0, 5).map((p, i) => (
+                        <div key={p.id} onClick={() => router.push(`/community/${p.id}`)}
+                          style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 0", borderBottom: i < 4 ? "1px solid var(--color-border-light)" : "none", cursor: "pointer" }}>
+                          <span style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: "900", color: i < 3 ? "var(--color-primary)" : "var(--color-border)", width: "28px", textAlign: "center", flexShrink: 0 }}>
+                            {i + 1}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: "13px", fontWeight: "500", color: "var(--color-text)", lineHeight: "1.4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</p>
+                            <div style={{ fontSize: "10px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                              <span>{p.nickname}</span>
+                              <span style={{ margin: "0 6px" }}>|</span>
+                              <span>{timeAgo(p.created_at)}</span>
+                              <span style={{ margin: "0 6px" }}>|</span>
+                              <span>좋아요 {p.likes}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* ── 나머지 이벤트 (리스트) ── */}
+                {restEvents.length > 0 && (
+                  <section>
+                    <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "16px", fontWeight: "700", marginBottom: "12px", paddingBottom: "8px", borderBottom: "2px solid var(--color-text)" }}>
+                      MORE EVENTS
+                    </h2>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+                      {restEvents.map((ev, i) => (
+                        <article key={ev.id} onClick={() => router.push(`/events/${ev.id}`)} role="button" tabIndex={0}
+                          onKeyDown={(e) => e.key === "Enter" && router.push(`/events/${ev.id}`)}
+                          style={{
+                            display: "flex", gap: "14px", padding: "14px 0", cursor: "pointer",
+                            borderBottom: i < restEvents.length - 1 ? "1px solid var(--color-border-light)" : "none",
+                          }}>
+                          {ev.thumbnail_url && (
+                            <div style={{ flexShrink: 0, width: "100px", height: "66px", borderRadius: "2px", overflow: "hidden", background: "#e8e0d0" }}>
+                              <img src={ev.thumbnail_url} alt={ev.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                              <span style={{
+                                fontSize: "9px", fontWeight: "700", letterSpacing: "0.5px",
+                                color: ev.status === "live" ? "var(--color-primary)" : ev.status === "soon" ? "#B45309" : "#999",
+                              }}>
+                                {ev.status === "live" ? "LIVE" : ev.status === "soon" ? "SOON" : "END"}
+                              </span>
+                              {ev.dday && <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>{ev.dday}</span>}
+                            </div>
+                            <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "14px", fontWeight: "700", lineHeight: "1.3", margin: "0 0 4px", color: "var(--color-text)" }}>
+                              {ev.title.length > 40 ? ev.title.slice(0, 40) + "..." : ev.title}
+                            </h3>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--color-text-muted)" }}>
+                              <span>{ev.channel_name}</span>
+                              {ev.prize && <span style={{ color: "var(--color-accent)", fontWeight: "500" }}>{ev.prize.length > 15 ? ev.prize.slice(0, 15) + "..." : ev.prize}</span>}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
           </>
         )}
+
+        {/* 이벤트 디테일 */}
         {eventDetailMatch && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
             <EventDetail eventId={eventDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />
           </Suspense>
         )}
 
-        {/* --- 커뮤니티 탭 --- */}
+        {/* ═══ 커뮤니티 탭 ═══ */}
         {tab === "community" && !postDetailMatch && !isWriting && !isSearch && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
             <Community onSelectPost={(id) => router.push(`/community/${id}`)} onWrite={() => requireLogin(() => router.push("/community/write"))} />
           </Suspense>
         )}
         {postDetailMatch && postDetailMatch.id !== "write" && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
             <PostDetail postId={postDetailMatch.id} onBack={() => router.back()} user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} onDeleted={() => { router.replace("/community"); showToast("글이 삭제되었습니다"); }} />
           </Suspense>
         )}
@@ -154,32 +367,42 @@ export default function App() {
           <WritePost onBack={() => router.back()} onDone={() => { router.replace("/community"); showToast("글이 작성되었습니다"); }} user={auth.user} authHeaders={auth.authHeaders} />
         )}
 
-        {/* --- 프로필 --- */}
+        {/* 프로필 */}
         {profileMatch && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
             <Profile nickname={profileMatch.nickname} onBack={() => router.back()} onSelectPost={(id) => router.push(`/community/${id}`)} currentUser={auth.user} />
           </Suspense>
         )}
 
-        {/* --- 북마크 --- */}
+        {/* 북마크 */}
         {isBookmarks && (
-          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:"#aaa"}}>로딩 중...</div>}>
+          <Suspense fallback={<div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>로딩 중...</div>}>
             <BookmarkList user={auth.user} authHeaders={auth.authHeaders} onSelectEvent={(id) => router.push(`/events/${id}`)} onBack={() => router.back()} onRequireLogin={() => setShowAuth(true)} />
           </Suspense>
         )}
+
+        {/* ═══ 하단 푸터 ═══ */}
+        {tab === "home" && !isSubPage && !loading && events.length > 0 && (
+          <footer style={{ padding: "20px", borderTop: "3px double var(--color-border)", textAlign: "center", marginTop: "20px" }}>
+            <p style={{ fontFamily: "var(--font-serif)", fontSize: "14px", fontWeight: "700", color: "var(--color-text-muted)" }}>쌀먹줍줍</p>
+            <p style={{ fontSize: "10px", color: "var(--color-text-muted)", marginTop: "4px" }}>유튜버 구독자 이벤트 커뮤니티</p>
+          </footer>
+        )}
       </div>
 
-      {/* --- 하단 탭바 --- */}
+      {/* ═══ 하단 탭바 ═══ */}
       {showTabBar && (
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"var(--color-card, #fff)", borderTop:"0.5px solid var(--color-border, #e0e0e0)", display:"flex", justifyContent:"center", zIndex:200 }}>
-          <div style={{ display:"flex", maxWidth:"560px", width:"100%" }}>
-            {TABS.map((t) => (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "var(--color-bg)", borderTop: "1px solid var(--color-border)", display: "flex", justifyContent: "center", zIndex: 200 }}>
+          <div style={{ display: "flex", maxWidth: "720px", width: "100%" }}>
+            {TABS.map((t, i) => (
               <button key={t.key} aria-current={tab === t.key ? "page" : undefined} onClick={() => switchTab(t.key)}
-                style={{ flex:1, padding:"8px 0 6px", background:"none", border:"none", cursor:"pointer",
-                  display:"flex", flexDirection:"column", alignItems:"center", gap:"2px",
-                  color: tab === t.key ? "#E84E3B" : "#bbb" }}>
-                <span style={{ fontSize:"18px" }}>{t.emoji}</span>
-                <span style={{ fontSize:"10px", fontWeight: tab === t.key ? "600" : "400" }}>{t.label}</span>
+                style={{
+                  flex: 1, padding: "10px 0 8px", background: "none", border: "none", cursor: "pointer",
+                  fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: tab === t.key ? "700" : "400",
+                  letterSpacing: "1.5px", color: tab === t.key ? "var(--color-primary)" : "var(--color-text-muted)",
+                  borderRight: i < TABS.length - 1 ? "1px solid var(--color-border-light)" : "none",
+                }}>
+                {t.label}
               </button>
             ))}
           </div>
@@ -188,10 +411,8 @@ export default function App() {
 
       {tab === "home" && showTabBar && !isSearch && <ReportButton user={auth.user} authHeaders={auth.authHeaders} onRequireLogin={() => setShowAuth(true)} />}
 
-      {/* 인증 모달 */}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuth={() => {}} authFns={auth} />}
 
-      {/* 고급 필터 모달 */}
       {showAdvancedFilter && (
         <AdvancedFilter
           onApply={(filters) => { updateFilter(filters); setShowAdvancedFilter(false); }}
@@ -199,7 +420,6 @@ export default function App() {
         />
       )}
 
-      {/* 토스트 */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
     </div>
   );
